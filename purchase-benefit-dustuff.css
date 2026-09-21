@@ -2,9 +2,14 @@
    더스터프 구매 혜택
 ======================================== */
 
-  .benefit-injected a,
-  .benefit-injected a:hover,
-  .benefit-wrap .prod-detail-section__title,
-  .benefit-wrap p{
-    color: #0000ff !important;
-  }
+.benefit-injected a,
+.benefit-injected a:hover,
+.benefit-injected .prod-detail-section__title,
+.benefit-injected p {
+  color: #0000ff !important;
+}
+
+.benefit-injected .prod-detail-section__content {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
