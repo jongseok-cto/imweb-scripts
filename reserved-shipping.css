@@ -1,0 +1,56 @@
+/* 시트 문구가 실제로 있는 옵션만 배치를 바꾼다. */
+#prod_options .dropdown-item.has-reserved-shipping a._requireOption > .tw-flex {
+  width: 100% !important;
+  display: flex !important;
+  flex-flow: row wrap !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 6px 10px;
+}
+#prod_options .has-reserved-shipping a._requireOption > .tw-flex > div:first-child {
+  flex: 0 0 60px !important;
+}
+#prod_options .reserved-shipping-text {
+  display: inline-flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  flex: 1 1 120px;
+  min-width: 0;
+  max-width: 100%;
+  margin-left: 0 !important;
+  font-size: 13px;
+  line-height: 1.5;
+  font-weight: 500;
+  color: #666;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+}
+#prod_options .sheet-option-notice-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+}
+#prod_options .reserved-shipping-date {
+  min-width: 0;
+  white-space: pre-wrap !important;
+  overflow-wrap: anywhere;
+}
+#prod_options .reserved-shipping-badge {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 5px;
+  background: #f3f3f3;
+  font-size: 12px;
+  line-height: 14px;
+  font-weight: 600;
+  color: #555;
+  white-space: nowrap;
+}
+#prod_options .has-reserved-shipping .btn-restock { margin-left: auto; }
+#prod_options .reserved-color-only { margin-top: 8px; }
+#prod_options .form-select-wrap .dropdown-menu .has-reserved-shipping > a { padding: 10px !important; }
+[data-sheet-notice] .prod-detail-section__content { white-space: pre-wrap; overflow-wrap: anywhere; }

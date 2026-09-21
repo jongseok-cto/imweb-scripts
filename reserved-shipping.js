@@ -1,0 +1,881 @@
+(function () {
+  const API_URL =
+    "https://script.google.com/macros/s/AKfycbzHZKXnGomjSslR3C355roaWa7VYpcOdtzuAS7j9ZpT2QyGZAdf5OoYSqo5_DZRqBg/exec";
+
+  const COLOR_NAMES = ["color", "colour", "컬러", "색상"];
+  const SIZE_NAMES = ["size", "사이즈"];
+
+  const DOMAIN_ALIASES = {
+    "neverseenbefore.imweb.me": "nvsbf.com",
+    "dustystuff.imweb.me": "dustuff.co.kr",
+    "lessbless.imweb.me": "lessbless.com",
+    "roseu.imweb.me": "roseyou.kr",
+    "ridiculous.imweb.me": "ridiculous.co.kr",
+    "mascolino.imweb.me": "mascolino.co.kr",
+    "sonador.imweb.me": "sonador.co.kr",
+    "armykaji.imweb.me": "armykaji.com",
+    "estrellas.imweb.me": "estrellas.co.kr",
+    "worknwalk.imweb.me": "worknwalk.com",
+    "closebye.imweb.me": "closeby2.com",
+    "kissofsummer.imweb.me": "kissofsummer.co.kr",
+  };
+
+  const currentDomain = normalizeDomain(window.location.hostname);
+  const currentIdx = new URLSearchParams(window.location.search).get("idx");
+
+  if (!currentIdx) return;
+
+  let productSettings = [];
+  let analyzeTimer = null;
+  const optionGroupTitles = new WeakMap();
+
+  /* ========================================
+     1. 구글시트 데이터 불러오기
+  ======================================== */
+
+  fetch(API_URL, {
+    cache: "no-store",
+  })
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error("API 응답 오류: " + response.status);
+      }
+
+      return response.json();
+    })
+    .then((data) => {
+      if (!Array.isArray(data)) throw new Error("API 응답 형식 오류");
+      productSettings = data.filter(
+        (item) =>
+          getCanonicalDomain(item.domain) ===
+            getCanonicalDomain(currentDomain) &&
+          String(item.productId) === String(currentIdx) &&
+          ["예약배송", "옵션문구"].includes(cleanText(item.type)) &&
+          item.enabled !== false,
+      );
+
+      if (!productSettings.length) return;
+
+      /* 예약배송 상품 표시용 body 클래스 */
+      document.body.classList.add("has-sheet-option-notices");
+      if (productSettings.some((item) => cleanText(item.type) === "예약배송"))
+        document.body.classList.add("is-reserve-delivery");
+
+      /* 상세페이지 배송 정보 자동 생성 */
+      syncDetailDeliveryNotice();
+
+      startObserver();
+
+      /* 페이지 로딩 후 즉시 1차 분석 */
+      analyzeOptions();
+    })
+    .catch((error) => {
+      console.error("예약배송 데이터 불러오기 실패:", error);
+    });
+
+  /* ========================================
+     2. 아임웹 옵션 변화 감지
+  ======================================== */
+
+  function startObserver() {
+    const observer = new MutationObserver(function (mutations) {
+      const hasRelevantChange = mutations.some((mutation) => {
+        if (
+          mutation.target instanceof Element &&
+          mutation.target.closest(
+            ".reserved-shipping-text, [data-sheet-notice]",
+          )
+        )
+          return false;
+        if (mutation.type === "attributes") {
+          return (
+            mutation.target instanceof Element &&
+            !!mutation.target.closest("#prod_options")
+          );
+        }
+
+        const nodes = [...mutation.addedNodes, ...mutation.removedNodes];
+
+        return nodes.some((node) => {
+          if (!(node instanceof Element)) {
+            return true;
+          }
+
+          /*
+            우리가 직접 삽입한 예약배송 문구 때문에
+            Observer가 불필요하게 다시 돌지 않도록 제외
+          */
+
+          if (
+            node.classList.contains("reserved-shipping-text") ||
+            node.classList.contains("reserved-shipping-date") ||
+            node.classList.contains("reserved-shipping-badge") ||
+            node.classList.contains("prod-detail-section--reserve-notice")
+          ) {
+            return false;
+          }
+
+          return true;
+        });
+      });
+
+      if (hasRelevantChange) {
+        scheduleAnalyze();
+      }
+    });
+
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["class", "checked", "aria-expanded"],
+    });
+
+    /*
+      radio / select 변경 감지
+    */
+
+    document.addEventListener(
+      "change",
+      function (event) {
+        if (!event.target.closest("#prod_options")) return;
+
+        analyzeOptions();
+
+        /*
+        아임웹이 뒤늦게 옵션 DOM을 교체하는 경우 대응
+      */
+
+        setTimeout(analyzeOptions, 30);
+        setTimeout(analyzeOptions, 100);
+      },
+      true,
+    );
+
+    /*
+      컬러칩 / 드롭다운 클릭 감지
+    */
+
+    document.addEventListener(
+      "click",
+      function (event) {
+        if (!event.target.closest("#prod_options")) return;
+
+        /*
+        즉시 현재 DOM 분석
+      */
+
+        analyzeOptions();
+
+        /*
+        아임웹 내부 옵션 갱신 시간차 대응
+      */
+
+        setTimeout(analyzeOptions, 30);
+        setTimeout(analyzeOptions, 100);
+      },
+      true,
+    );
+  }
+
+  /* ========================================
+     3. Observer 호출 정리
+  ======================================== */
+
+  function scheduleAnalyze() {
+    clearTimeout(analyzeTimer);
+
+    analyzeTimer = setTimeout(function () {
+      analyzeOptions();
+    }, 0);
+  }
+
+  /* ========================================
+     4. 현재 보이는 상품 옵션 영역 찾기
+  ======================================== */
+
+  function getVisibleProductOptions() {
+    const candidates = [...document.querySelectorAll("#prod_options")];
+
+    return candidates.find(isVisible) || candidates[0] || null;
+  }
+
+  function isVisible(element) {
+    if (!element) return false;
+
+    const style = window.getComputedStyle(element);
+
+    return (
+      style.display !== "none" &&
+      style.visibility !== "hidden" &&
+      element.getClientRects().length > 0
+    );
+  }
+
+  /* ========================================
+     5. 옵션 전체 분석
+  ======================================== */
+
+  function analyzeOptions() {
+    /* 배송정보 영역이 늦게 생성되는 경우 재확인 */
+    syncDetailDeliveryNotice();
+
+    const root = getVisibleProductOptions();
+
+    if (!root) return;
+
+    const colorInfo = detectColor(root);
+
+    const sizeInfo = detectSizes(root);
+
+    /*
+      컬러를 아직 선택하지 않은 상태
+    */
+
+    if (!colorInfo.value && colorInfo.type) {
+      cleanupAllManagedNotices(root);
+
+      return;
+    }
+
+    /*
+      ========================================
+      컬러 + 사이즈 상품
+      ========================================
+    */
+
+    if (sizeInfo.exists) {
+      const activeKeys = new Set();
+
+      sizeInfo.items.forEach((item) => {
+        const key =
+          normalizeOption(colorInfo.value) + "|" + normalizeOption(item.value);
+
+        activeKeys.add(key);
+
+        const matched = findSheetMatch(colorInfo.value, item.value);
+
+        syncSizeMessage(item.element, key, matched);
+      });
+
+      cleanupStaleSizeNotices(root, activeKeys);
+
+      /*
+        컬러 전용 안내 제거
+      */
+
+      root
+        .querySelectorAll(".reserved-color-only")
+        .forEach((el) => el.remove());
+
+      return;
+    }
+
+    /*
+      ========================================
+      컬러만 있고 사이즈 없는 상품
+      ========================================
+    */
+
+    cleanupSizeNotices(root);
+
+    const key = normalizeOption(colorInfo.value) + "|";
+
+    const matched = findSheetMatch(colorInfo.value, "");
+
+    syncColorOnlyMessage(root, colorInfo, key, matched);
+  }
+
+  /* ========================================
+     6. 현재 선택 컬러 감지
+  ======================================== */
+
+  function detectColor(root) {
+    /*
+      ----------------------------------------
+      A. 컬러칩
+      ----------------------------------------
+    */
+
+    const colorLabels = [
+      ...root.querySelectorAll('label[data-opttype="color"]'),
+    ];
+
+    if (colorLabels.length) {
+      const checked = colorLabels.find((label) => {
+        const input = label.querySelector('input[type="radio"]');
+
+        return input && input.checked;
+      });
+
+      return {
+        type: "chip",
+
+        value: checked ? cleanText(checked.dataset.title) : null,
+
+        element: checked || null,
+      };
+    }
+
+    /*
+      ----------------------------------------
+      B. 컬러 드롭다운
+      ----------------------------------------
+    */
+
+    const groups = getOptionGroups(root);
+
+    const colorGroup = groups.find((group) => isColorName(group.title));
+
+    if (colorGroup) {
+      /*
+        현재 선택된 dropdown-item
+      */
+
+      const selected = colorGroup.element.querySelector(
+        ".dropdown-item.selected",
+      );
+
+      if (selected) {
+        const value = extractDropdownItemText(selected);
+
+        if (value) {
+          return {
+            type: "dropdown",
+
+            value: value,
+
+            element: selected,
+          };
+        }
+      }
+
+      /*
+        selected 클래스가 없는 구조 대비
+        toggle 현재 표시값 사용
+      */
+
+      const toggle = colorGroup.element.querySelector(".dropdown-toggle");
+
+      if (toggle) {
+        const text = cleanText(toggle.textContent);
+
+        if (text && !isPlaceholder(text, COLOR_NAMES)) {
+          return {
+            type: "dropdown",
+
+            value: text,
+
+            element: toggle,
+          };
+        }
+      }
+    }
+
+    return {
+      type: colorGroup ? "dropdown" : null,
+
+      value: null,
+
+      element: null,
+    };
+  }
+
+  /* ========================================
+     7. 사이즈 목록 감지
+  ======================================== */
+
+  function detectSizes(root) {
+    const groups = getOptionGroups(root);
+
+    const sizeGroup = groups.find((group) => isSizeName(group.title));
+
+    /*
+      사이즈 그룹 자체가 없음
+    */
+
+    if (!sizeGroup) {
+      return {
+        exists: false,
+        items: [],
+      };
+    }
+
+    const dropdownItems = [
+      ...sizeGroup.element.querySelectorAll(".dropdown-item"),
+    ];
+
+    const items = [];
+
+    dropdownItems.forEach((item) => {
+      const value = extractSizeText(item);
+
+      if (!value) return;
+
+      /*
+        컬러 선택 전 안내 문구 제외
+      */
+
+      if (value.includes("선택해주세요") || value.includes("선택해 주세요")) {
+        return;
+      }
+
+      items.push({
+        value: value,
+
+        element: item,
+      });
+    });
+
+    return {
+      exists: true,
+
+      items: items,
+    };
+  }
+
+  /* ========================================
+     8. 옵션 그룹 찾기
+  ======================================== */
+
+  function getOptionGroups(root) {
+    const groups = [];
+
+    /*
+      ----------------------------------------
+      PC형
+      option_title 기준
+      ----------------------------------------
+    */
+
+    root.querySelectorAll(".option_title").forEach((titleEl) => {
+      const title = cleanOptionTitle(titleEl.textContent);
+
+      /*
+          "필수옵션" 등의 일반 제목 제외
+        */
+
+      if (!isColorName(title) && !isSizeName(title)) {
+        return;
+      }
+
+      const parent = titleEl.closest("._form_parent") || titleEl.parentElement;
+
+      if (!parent) return;
+
+      groups.push({
+        title: title,
+
+        element: parent,
+      });
+    });
+
+    /*
+      ----------------------------------------
+      모바일형 / option_title 없는 구조
+      ----------------------------------------
+    */
+
+    root.querySelectorAll("._form_parent").forEach((parent) => {
+      /*
+          이미 찾은 그룹 제외
+        */
+
+      if (groups.some((group) => group.element === parent)) {
+        return;
+      }
+
+      const wrap = parent.querySelector(".form-select-wrap");
+
+      const toggle = parent.querySelector(".dropdown-toggle");
+
+      if (!wrap || !toggle) {
+        return;
+      }
+
+      let title = optionGroupTitles.get(parent) || "";
+
+      /*
+          모바일 컬러 드롭다운
+        */
+
+      if (wrap.classList.contains("color")) {
+        title = "Color";
+      }
+
+      /*
+          Size
+        */
+      else {
+        const toggleText = cleanText(toggle.textContent);
+
+        if (isSizeName(toggleText)) {
+          title = "Size";
+        }
+      }
+
+      if (!title) return;
+      optionGroupTitles.set(parent, title);
+
+      groups.push({
+        title: title,
+
+        element: parent,
+      });
+    });
+
+    return groups;
+  }
+
+  /* ========================================
+     9. 구글시트 옵션 매칭
+  ======================================== */
+
+  function findSheetMatch(color, size) {
+    return ["예약배송", "옵션문구"]
+      .map((type) => {
+        let best = null,
+          score = -1;
+        productSettings.forEach((item) => {
+          if (cleanText(item.type) !== type || !cleanText(item.message)) return;
+          const c = normalizeOption(item.color),
+            z = normalizeOption(item.size);
+          const nc = normalizeOption(color),
+            nz = normalizeOption(size);
+          const wildcard = (value) => value === "all" || value === "*";
+          const colorMatch = c === nc || (type === "옵션문구" && wildcard(c));
+          const sizeMatch =
+            z === nz ||
+            (nz === "" && z === "all") ||
+            (type === "옵션문구" && wildcard(z));
+          const specificity = (c === nc ? 2 : 0) + (z === nz ? 1 : 0);
+          if (colorMatch && sizeMatch && specificity > score) {
+            best = item;
+            score = specificity;
+          }
+        });
+        return best;
+      })
+      .filter(Boolean);
+  }
+
+  function createOptionNotice(rules, key, colorOnly) {
+    const notice = document.createElement("span");
+    notice.className =
+      "reserved-shipping-text" + (colorOnly ? " reserved-color-only" : "");
+    notice.dataset.reservedKey = key;
+    rules.forEach((rule) => {
+      const line = document.createElement("span");
+      line.className = "sheet-option-notice-line";
+      const message = document.createElement("span");
+      message.className = "reserved-shipping-date";
+      message.textContent = String(rule.message || "");
+      line.appendChild(message);
+      if (cleanText(rule.type) === "예약배송") {
+        const badge = document.createElement("span");
+        badge.className = "reserved-shipping-badge";
+        badge.textContent = "예약배송";
+        line.appendChild(badge);
+      }
+      notice.appendChild(line);
+    });
+    return notice;
+  }
+
+  /* ========================================
+     10. 사이즈 옵션 문구 동기화
+  ======================================== */
+
+  function syncSizeMessage(dropdownItem, key, rules) {
+    const link = dropdownItem.querySelector("a._requireOption");
+    if (!link) return;
+    const flex = link.querySelector(".tw-flex") || link;
+    const existing = dropdownItem.querySelector(
+      ".reserved-shipping-text[data-reserved-key]",
+    );
+    if (!rules.length) {
+      if (existing) existing.remove();
+      if (dropdownItem.classList.contains("has-reserved-shipping"))
+        dropdownItem.classList.remove("has-reserved-shipping");
+      return;
+    }
+    if (existing && existing.dataset.reservedKey === key) return;
+    if (existing) existing.remove();
+    const notice = createOptionNotice(rules, key, false);
+    const restockButton = flex.querySelector(".btn-restock");
+    flex.insertBefore(notice, restockButton || null);
+    if (!dropdownItem.classList.contains("has-reserved-shipping"))
+      dropdownItem.classList.add("has-reserved-shipping");
+  }
+
+  /* ========================================
+     11. 사이즈 없는 상품
+  ======================================== */
+
+  function syncColorOnlyMessage(root, colorInfo, key, rules) {
+    const existing = root.querySelector(
+      ".reserved-color-only[data-reserved-key]",
+    );
+    if (!rules.length) {
+      if (existing) existing.remove();
+      return;
+    }
+    if (existing && existing.dataset.reservedKey === key) return;
+    if (existing) existing.remove();
+    const notice = createOptionNotice(rules, key, true);
+    if (colorInfo.type === "chip" && colorInfo.element) {
+      colorInfo.element.parentElement.appendChild(notice);
+    } else if (colorInfo.type === "dropdown") {
+      const colorGroup = getOptionGroups(root).find((group) =>
+        isColorName(group.title),
+      );
+      if (colorGroup) colorGroup.element.appendChild(notice);
+    }
+  }
+
+  /* ========================================
+     12. 현재 컬러에 없는 이전 문구 정리
+  ======================================== */
+
+  function cleanupStaleSizeNotices(root, activeKeys) {
+    root
+      .querySelectorAll(".reserved-shipping-text[data-reserved-key]")
+      .forEach((notice) => {
+        if (notice.classList.contains("reserved-color-only")) {
+          return;
+        }
+
+        const key = notice.dataset.reservedKey;
+
+        if (!activeKeys.has(key)) {
+          const item = notice.closest(".dropdown-item");
+
+          notice.remove();
+
+          if (item) {
+            item.classList.remove("has-reserved-shipping");
+          }
+        }
+      });
+  }
+
+  /* ========================================
+     13. 사이즈 문구만 정리
+  ======================================== */
+
+  function cleanupSizeNotices(root) {
+    root
+      .querySelectorAll(".reserved-shipping-text:not(.reserved-color-only)")
+      .forEach((el) => el.remove());
+
+    root.querySelectorAll(".has-reserved-shipping").forEach((el) => {
+      el.classList.remove("has-reserved-shipping");
+    });
+  }
+
+  /* ========================================
+     14. 관리 문구 전체 정리
+  ======================================== */
+
+  function cleanupAllManagedNotices(root) {
+    root
+      .querySelectorAll(".reserved-shipping-text[data-reserved-key]")
+      .forEach((el) => el.remove());
+
+    root.querySelectorAll(".has-reserved-shipping").forEach((el) => {
+      el.classList.remove("has-reserved-shipping");
+    });
+  }
+
+  /* ========================================
+     15. 드롭다운 컬러값 추출
+  ======================================== */
+
+  function extractDropdownItemText(item) {
+    const candidates = [
+      ...item.querySelectorAll("a._requireOption span.blocked"),
+    ];
+
+    for (const element of candidates) {
+      const text = cleanText(element.textContent);
+
+      if (text) {
+        return text;
+      }
+    }
+
+    return cleanText(item.textContent);
+  }
+
+  /* ========================================
+     16. 사이즈값 추출
+  ======================================== */
+
+  function extractSizeText(item) {
+    const preferred = item.querySelector("span.margin-bottom-lg");
+
+    if (preferred) {
+      const text = cleanText(preferred.textContent);
+
+      if (text) {
+        return text;
+      }
+    }
+
+    const option = item.querySelector("a._requireOption span.blocked");
+
+    if (option) {
+      const text = cleanText(option.textContent);
+
+      if (text) {
+        return text;
+      }
+    }
+
+    return "";
+  }
+
+  /* ========================================
+   상세페이지 배송 정보 자동 생성
+======================================== */
+
+  function syncDetailDeliveryNotice() {
+    const rules = productSettings.filter(
+      (item) => cleanText(item.type) === "예약배송" && cleanText(item.message),
+    );
+    const notices = [],
+      used = new Set();
+    let allDates = true;
+    rules.forEach((item) => {
+      const color = cleanText(item.color),
+        size = cleanText(item.size),
+        message = String(item.message || "").trim();
+      const key =
+        normalizeOption(color) + "|" + normalizeOption(size) + "|" + message;
+      if (used.has(key)) return;
+      used.add(key);
+      const date = convertShippingDate(message);
+      if (!date) allDates = false;
+      const option =
+        color + (size && size.toLowerCase() !== "all" ? "(" + size + ")" : "");
+      notices.push({ option, message, date });
+    });
+    if (!notices.length) return;
+    const finalMessage =
+      notices
+        .map(
+          (item) =>
+            (item.option ? item.option + " " : "") +
+            (allDates ? item.date : item.message),
+        )
+        .join(" / ") + (allDates ? " 이후 순차 출고됩니다." : "");
+    const existing = document.querySelector(
+      '[data-sheet-notice="reserved-summary"]',
+    );
+    if (existing) {
+      const content = existing.querySelector(".prod-detail-section__content");
+      if (content && content.textContent !== finalMessage)
+        content.textContent = finalMessage;
+      return;
+    }
+    const deliverySection = document.querySelector(
+      ".prod-detail-section--delivery",
+    );
+    if (!deliverySection) return;
+    const section = document.createElement("div");
+    section.className =
+      "prod-detail-section prod-detail-section--reserve-notice";
+    section.dataset.sheetNotice = "reserved-summary";
+    const title = document.createElement("div");
+    title.className = "prod-detail-section__title";
+    title.textContent = "옵션별 배송 안내";
+    const content = document.createElement("div");
+    content.className = "prod-detail-section__content";
+    content.textContent = finalMessage;
+    section.append(title, content);
+    const manual = document.querySelector('[data-sheet-notice="delivery"]');
+    (manual || deliverySection).insertAdjacentElement("afterend", section);
+  }
+
+  function convertShippingDate(message) {
+    // 정해진 배송 문장 전체가 일치할 때만 줄인다. 추가 조건/일반 문장은 그대로 표시한다.
+    const match = String(message || "")
+      .trim()
+      .match(
+        /^(\d{1,2})\s*\/\s*(\d{1,2})(?:\s*이후\s*순차\s*출고(?:됩니다)?)?[.!]?$/,
+      );
+    if (!match) return "";
+    const month = Number(match[1]),
+      day = Number(match[2]);
+    const days = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    if (month < 1 || month > 12 || day < 1 || day > days[month - 1]) return "";
+    return month + "월 " + day + "일";
+  }
+
+  /* ========================================
+     UTIL
+  ======================================== */
+
+  function cleanText(value) {
+    return String(value || "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function cleanOptionTitle(value) {
+    return cleanText(value)
+      .replace(/\*/g, "")
+      .replace(/\(필수\)/gi, "")
+      .trim();
+  }
+
+  function normalizeOption(value) {
+    return cleanText(value).toLowerCase();
+  }
+
+  function normalizeDomain(value) {
+    return String(value || "")
+      .replace(/^https?:\/\//i, "")
+      .replace(/^www\./i, "")
+      .replace(/\/.*$/, "")
+      .toLowerCase()
+      .trim();
+  }
+
+  function getCanonicalDomain(value) {
+    const domain = normalizeDomain(value);
+
+    return DOMAIN_ALIASES[domain] || domain;
+  }
+
+  function isColorName(value) {
+    const text = cleanOptionTitle(value).toLowerCase();
+
+    return COLOR_NAMES.some(
+      (name) => text === name || text.startsWith(name + " "),
+    );
+  }
+
+  function isSizeName(value) {
+    const text = cleanOptionTitle(value).toLowerCase();
+
+    return SIZE_NAMES.some(
+      (name) => text === name || text.startsWith(name + " "),
+    );
+  }
+
+  function isPlaceholder(value, names) {
+    const text = cleanOptionTitle(value).toLowerCase();
+
+    return names.some((name) => text === name || text === name + " 필수");
+  }
+
+  function escapeHtml(value) {
+    return String(value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+})();
