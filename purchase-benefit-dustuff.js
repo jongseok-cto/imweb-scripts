@@ -102,14 +102,16 @@
         window.removeEventListener("pagehide", leave);
         resolve(element);
       };
-      const leave = () => finish(null);
+      const leave = (event) => {
+        if (!event.persisted) finish(null);
+      };
       const observer = new MutationObserver(() => {
         const element = document.querySelector(selector);
         if (element) finish(element);
       });
       const timer = setTimeout(() => finish(null), timeoutMs);
       observer.observe(document.body, { childList: true, subtree: true });
-      window.addEventListener("pagehide", leave, { once: true });
+      window.addEventListener("pagehide", leave);
     });
   }
 
