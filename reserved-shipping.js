@@ -864,7 +864,7 @@
       notices.push({ option, message, date });
     });
     if (!notices.length) return;
-    const finalMessage =
+    let finalMessage =
       notices
         .map(
           (item) =>
@@ -872,13 +872,48 @@
             (allDates ? item.date : item.message),
         )
         .join(" / ") + (allDates ? " 이후 순차 출고됩니다." : "");
+    if (notices.length >= 6) {
+      const groups = new Map();
+      notices.forEach((item) => {
+        const message = allDates
+          ? item.date + " 이후 순차 출고됩니다."
+          : item.message;
+        if (!groups.has(message)) groups.set(message, []);
+        groups.get(message).push(item.option);
+      });
+      finalMessage = [...groups]
+        .map(
+          ([message, options]) =>
+            options.filter(Boolean).join(" · ") +
+            (options.some(Boolean) ? " — " : "") +
+            message,
+        )
+        .join("\n");
+    }
+    function renderSummary(content) {
+      if (content.dataset.summaryText === finalMessage) return;
+      content.replaceChildren();
+      content.dataset.summaryText = finalMessage;
+      content.style.whiteSpace = "pre-wrap";
+      if (notices.length >= 8) {
+        const details = document.createElement("details"),
+          summary = document.createElement("summary"),
+          text = document.createElement("div");
+        summary.textContent =
+          "총 " + notices.length + "개 옵션의 배송 안내 보기";
+        summary.style.cursor = "pointer";
+        text.textContent = finalMessage;
+        text.style.marginTop = "8px";
+        details.append(summary, text);
+        content.appendChild(details);
+      } else content.textContent = finalMessage;
+    }
     const existing = document.querySelector(
       '[data-sheet-notice="reserved-summary"]',
     );
     if (existing) {
       const content = existing.querySelector(".prod-detail-section__content");
-      if (content && content.textContent !== finalMessage)
-        content.textContent = finalMessage;
+      if (content) renderSummary(content);
       return;
     }
     const deliverySection = document.querySelector(
@@ -894,7 +929,7 @@
     title.textContent = "옵션별 배송 안내";
     const content = document.createElement("div");
     content.className = "prod-detail-section__content";
-    content.textContent = finalMessage;
+    renderSummary(content);
     section.append(title, content);
     const manual = document.querySelector('[data-sheet-notice="delivery"]');
     (manual || deliverySection).insertAdjacentElement("afterend", section);

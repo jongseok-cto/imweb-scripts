@@ -1,0 +1,11 @@
+{
+  "sourceCommit": "dd30d1fed73df82bc7dade8d2433892da6e00b29",
+  "files": {
+    "delivery-info.js": "4957905da43398077228aa967b4497ae89d664199adcae604ca131add173e3ef",
+    "reserved-shipping.js": "fcf10e55c0a532f599cf9adb8d7df8d17a0eb1dc8f01611775d40d4bf9970e5d",
+    "purchase-benefit-dustuff.js": "a351fa543ff19d78253ab485e6b25ce3443b3a23da436fbe93e4be685837567c",
+    "reserved-shipping.css": "2d21279506eef37f038e055c81d5e11366ae01c41c0ecc283e952224b56cd007",
+    "purchase-benefit-dustuff.css": "a9c7d30797e4634314793b108858f7dae3553373399470b3531c80ca68b47ea6",
+    "demo/index.html": "34fb6f886095bc97c8ff17ed7ebf91c5c0728f6616fbc76912f283d4a92dbf11"
+  }
+}

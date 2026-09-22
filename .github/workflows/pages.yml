@@ -1,0 +1,43 @@
+name: Verify and deploy storefront
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      release_ref:
+        description: 'Existing commit or tag to restore (empty = main)'
+        required: false
+permissions:
+  contents: read
+concurrency:
+  group: storefront-pages
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_ref || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: node scripts/package-cdn.cjs
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+  deploy:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
