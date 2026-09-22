@@ -48,7 +48,7 @@
 
   async function fetchRules() {
     const url = new URL(API_URL);
-    url.searchParams.set("domain", domain);
+    url.searchParams.set("domain", normalizeDomain(location.hostname));
     url.searchParams.set("productId", productId);
     for (let attempt = 0; attempt < 2; attempt++) {
       const controller = new AbortController();
@@ -61,15 +61,25 @@
         if (!response.ok) throw new Error("API 응답 오류: " + response.status);
         const data = await response.json();
         if (!Array.isArray(data)) throw new Error("API 응답 형식 오류");
-        return data.filter(
-          (item) =>
-            item &&
-            typeof item === "object" &&
-            !Array.isArray(item) &&
-            item.enabled !== false &&
-            canonicalDomain(item.domain) === domain &&
-            text(item.productId) === productId,
-        );
+        return data
+          .filter(
+            (item) =>
+              item &&
+              typeof item === "object" &&
+              !Array.isArray(item) &&
+              item.enabled !== false &&
+              (canonicalDomain(item.domain) === domain ||
+                (Array.isArray(item.domainAliases) &&
+                  item.domainAliases.some(
+                    (alias) =>
+                      normalizeDomain(alias) ===
+                      normalizeDomain(location.hostname),
+                  ))) &&
+              text(item.productId) === productId,
+          )
+          .sort(
+            (a, b) => (Number(b.priority) || 0) - (Number(a.priority) || 0),
+          );
       } catch (error) {
         if (attempt === 1) throw error;
       } finally {
@@ -131,8 +141,9 @@
 (function () {
   const core = window.__IMWEB_PRODUCT_NOTICES_V1__;
 
-  const COLOR_NAMES = ["color", "colour", "컬러", "색상"];
-  const SIZE_NAMES = ["size", "사이즈"];
+  let COLOR_NAMES = ["color", "colour", "컬러", "색상"];
+  let SIZE_NAMES = ["size", "사이즈"];
+  let noticeStyle = {};
 
   let productSettings = [];
   let analyzeTimer = null;
@@ -148,6 +159,12 @@
     );
 
     if (!productSettings.length) return;
+    const settings = productSettings[0];
+    if (Array.isArray(settings.optionNames?.color))
+      COLOR_NAMES = settings.optionNames.color.map(normalizeOption);
+    if (Array.isArray(settings.optionNames?.size))
+      SIZE_NAMES = settings.optionNames.size.map(normalizeOption);
+    noticeStyle = settings.noticeStyle || {};
 
     /* 예약배송 상품 표시용 body 클래스 */
     document.body.classList.add("has-sheet-option-notices");
@@ -639,7 +656,9 @@
       .map((type) => {
         let best = null,
           score = -1;
+        let priority = -Infinity;
         productSettings.forEach((item) => {
+          if (item.placement === "배송요약만") return;
           if (cleanText(item.type) !== type || !cleanText(item.message)) return;
           const c = normalizeOption(item.color),
             z = normalizeOption(item.size);
@@ -652,9 +671,17 @@
             (nz === "" && z === "all") ||
             (type === "옵션문구" && wildcard(z));
           const specificity = (c === nc ? 2 : 0) + (z === nz ? 1 : 0);
-          if (colorMatch && sizeMatch && specificity > score) {
+          const rank = Number.isFinite(Number(item.priority))
+            ? Number(item.priority)
+            : 0;
+          if (
+            colorMatch &&
+            sizeMatch &&
+            (rank > priority || (rank === priority && specificity > score))
+          ) {
             best = item;
             score = specificity;
+            priority = rank;
           }
         });
         return best;
@@ -673,11 +700,13 @@
       const message = document.createElement("span");
       message.className = "reserved-shipping-date";
       message.textContent = String(rule.message ?? "");
+      if (/^#[a-f0-9]{6}$/i.test(noticeStyle.color || ""))
+        message.style.color = noticeStyle.color;
       line.appendChild(message);
       if (cleanText(rule.type) === "예약배송") {
         const badge = document.createElement("span");
         badge.className = "reserved-shipping-badge";
-        badge.textContent = "예약배송";
+        badge.textContent = core.text(noticeStyle.badgeText) || "예약배송";
         line.appendChild(badge);
       }
       notice.appendChild(line);
@@ -844,7 +873,10 @@
 
   function syncDetailDeliveryNotice() {
     const rules = productSettings.filter(
-      (item) => cleanText(item.type) === "예약배송" && cleanText(item.message),
+      (item) =>
+        cleanText(item.type) === "예약배송" &&
+        cleanText(item.message) &&
+        item.placement !== "옵션만",
     );
     const notices = [],
       used = new Set();
@@ -853,8 +885,8 @@
       const color = cleanText(item.color),
         size = cleanText(item.size),
         message = String(item.message ?? "").trim();
-      const key =
-        normalizeOption(color) + "|" + normalizeOption(size) + "|" + message;
+      // Rules arrive in stable priority order; retain one message per exact target.
+      const key = normalizeOption(color) + "|" + normalizeOption(size);
       if (used.has(key)) return;
       used.add(key);
       const date = convertShippingDate(message);

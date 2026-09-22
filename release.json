@@ -1,11 +1,11 @@
 {
-  "sourceCommit": "ef9552ec64556d3cc80b71d61021d2b0687f3d8e",
+  "sourceCommit": "31e9df913d172f05e8c906b60eb922f39b3ff027",
   "files": {
-    "delivery-info.js": "4957905da43398077228aa967b4497ae89d664199adcae604ca131add173e3ef",
-    "reserved-shipping.js": "fcf10e55c0a532f599cf9adb8d7df8d17a0eb1dc8f01611775d40d4bf9970e5d",
-    "purchase-benefit-dustuff.js": "a351fa543ff19d78253ab485e6b25ce3443b3a23da436fbe93e4be685837567c",
+    "delivery-info.js": "ee0aff71fe4aaee224f0306c2af0c48234c32cafaca61fdd71537fd2bb0fcf1e",
+    "reserved-shipping.js": "91000a72e434c7aad65bb766d6f86ebb60f3a167f05cb064069bdc42b1e6f02b",
+    "purchase-benefit-dustuff.js": "85189515fda539a9888889d97fed64e42dc39a1f551654660a4b9989e7c89526",
     "reserved-shipping.css": "0e2c1cee2b825611f4382a1c9151f1dbf2717a11b65c7a9c927909f2addca0fe",
     "purchase-benefit-dustuff.css": "a9c7d30797e4634314793b108858f7dae3553373399470b3531c80ca68b47ea6",
-    "demo/index.html": "44aef33d63b7017d70396487fdb13d189d41ebe2629855bd86fcd336b8138d3b"
+    "demo/index.html": "9ca4c2a94f00fc6183e679048662bd2417fd1e28efa5dfe39ac6297bd86a4f08"
   }
 }

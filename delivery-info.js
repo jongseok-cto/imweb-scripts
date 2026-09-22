@@ -48,7 +48,7 @@
 
   async function fetchRules() {
     const url = new URL(API_URL);
-    url.searchParams.set("domain", domain);
+    url.searchParams.set("domain", normalizeDomain(location.hostname));
     url.searchParams.set("productId", productId);
     for (let attempt = 0; attempt < 2; attempt++) {
       const controller = new AbortController();
@@ -61,15 +61,25 @@
         if (!response.ok) throw new Error("API 응답 오류: " + response.status);
         const data = await response.json();
         if (!Array.isArray(data)) throw new Error("API 응답 형식 오류");
-        return data.filter(
-          (item) =>
-            item &&
-            typeof item === "object" &&
-            !Array.isArray(item) &&
-            item.enabled !== false &&
-            canonicalDomain(item.domain) === domain &&
-            text(item.productId) === productId,
-        );
+        return data
+          .filter(
+            (item) =>
+              item &&
+              typeof item === "object" &&
+              !Array.isArray(item) &&
+              item.enabled !== false &&
+              (canonicalDomain(item.domain) === domain ||
+                (Array.isArray(item.domainAliases) &&
+                  item.domainAliases.some(
+                    (alias) =>
+                      normalizeDomain(alias) ===
+                      normalizeDomain(location.hostname),
+                  ))) &&
+              text(item.productId) === productId,
+          )
+          .sort(
+            (a, b) => (Number(b.priority) || 0) - (Number(a.priority) || 0),
+          );
       } catch (error) {
         if (attempt === 1) throw error;
       } finally {

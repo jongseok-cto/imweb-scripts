@@ -36,7 +36,8 @@
   // 데모 페이지에서만 샘플 데이터로 대체한다. 운영 파일에는 테스트용 주소/분기가 없다.
   const row=(type,color,size,message)=>({enabled:true,domain:location.hostname,productId:'1',type,color,size,message});
   const sample=[row('배송정보','','','제주·도서산간 지역은 배송이 1~2일 더 소요될 수 있습니다.'),row('예약배송','Black','M','주문일로부터 15일 후 순차 출고'),row('옵션문구','Black','M','* 한정 수량\n재입고 일정은 별도로 안내합니다.'),row('옵션문구','Black','L','기장이 넉넉한 사이즈입니다. 상세 실측을 꼭 확인해 주세요.'),row('옵션문구','White','all','밝은 색상은 비침이 있을 수 있습니다. 이너와 함께 착용해 주세요.')];
-  const scenario=new URLSearchParams(location.search).get('scenario');
+  const requestedScenario=new URLSearchParams(location.search).get('scenario');
+  const scenario=['long','set','hidden'].includes(requestedScenario)?requestedScenario:null;
   if(scenario==='long') {
     sample.splice(0,sample.length,...['Black','White'].flatMap(color=>['S','M','L','XL','2XL'].map(size=>row('예약배송',color,size,'주문일로부터 15일 후 순차 출고'))));
     document.querySelector('.intro').textContent='10개 옵션의 같은 배송 문구를 묶었습니다. 안내를 펼치면 모든 적용 옵션을 확인할 수 있습니다.';

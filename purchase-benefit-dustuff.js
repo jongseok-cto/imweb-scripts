@@ -48,7 +48,7 @@
 
   async function fetchRules() {
     const url = new URL(API_URL);
-    url.searchParams.set("domain", domain);
+    url.searchParams.set("domain", normalizeDomain(location.hostname));
     url.searchParams.set("productId", productId);
     for (let attempt = 0; attempt < 2; attempt++) {
       const controller = new AbortController();
@@ -61,15 +61,25 @@
         if (!response.ok) throw new Error("API 응답 오류: " + response.status);
         const data = await response.json();
         if (!Array.isArray(data)) throw new Error("API 응답 형식 오류");
-        return data.filter(
-          (item) =>
-            item &&
-            typeof item === "object" &&
-            !Array.isArray(item) &&
-            item.enabled !== false &&
-            canonicalDomain(item.domain) === domain &&
-            text(item.productId) === productId,
-        );
+        return data
+          .filter(
+            (item) =>
+              item &&
+              typeof item === "object" &&
+              !Array.isArray(item) &&
+              item.enabled !== false &&
+              (canonicalDomain(item.domain) === domain ||
+                (Array.isArray(item.domainAliases) &&
+                  item.domainAliases.some(
+                    (alias) =>
+                      normalizeDomain(alias) ===
+                      normalizeDomain(location.hostname),
+                  ))) &&
+              text(item.productId) === productId,
+          )
+          .sort(
+            (a, b) => (Number(b.priority) || 0) - (Number(a.priority) || 0),
+          );
       } catch (error) {
         if (attempt === 1) throw error;
       } finally {
@@ -131,12 +141,20 @@
 (function () {
   const core = window.__IMWEB_PRODUCT_NOTICES_V1__;
   core.start("구매혜택", async function () {
-    const benefits = (await core.rules()).filter(
-      (item) =>
-        core.text(item.type) === "구매혜택" &&
-        item.setupAvailable !== false &&
-        /^\d+$/.test(core.text(item.setupProductId)),
-    );
+    const seen = new Set();
+    const benefits = (await core.rules())
+      .filter(
+        (item) =>
+          core.text(item.type) === "구매혜택" &&
+          item.setupAvailable !== false &&
+          /^\d+$/.test(core.text(item.setupProductId)),
+      )
+      .filter((item) => {
+        const id = core.text(item.setupProductId);
+        if (seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      });
     if (!benefits.length) return;
     const detail = await core.waitFor("._item_detail_wrap");
     if (!detail) return;
@@ -148,10 +166,12 @@
       .forEach((element) => element.remove());
     const fragment = document.createDocumentFragment();
     benefits.forEach((benefit) => {
-      const counterpart = getCounterpartName(
-        core.text(benefit.setupTitle),
-        currentName || core.text(benefit.productName),
-      );
+      const counterpart =
+        core.text(benefit.setupLabel) ||
+        getCounterpartName(
+          core.text(benefit.setupTitle),
+          currentName || core.text(benefit.productName),
+        );
       let message =
         core.text(benefit.message) ||
         "할인 받고 {상품명} 셋업으로 구매하러 가기→";

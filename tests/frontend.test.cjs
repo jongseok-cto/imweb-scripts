@@ -15,6 +15,33 @@ async function page(t, rules, options={}, order=['reserved-shipping.js']) {
   return {w:dom.window,d:dom.window.document};
 }
 const summary = d=>d.querySelector('[data-sheet-notice="reserved-summary"] .prod-detail-section__content')?.textContent;
+
+test('시트에 추가한 도메인으로 요청하고 새 별칭의 안내를 표시한다',async t=>{
+  let request;const rules=[rule('배송정보','새 도메인 안내',{domainAliases:['new-brand.imweb.me']})];
+  const {d}=await page(t,rules,{url:'https://new-brand.imweb.me/shop_view?idx=1',fetch:async url=>{request=url;return{ok:true,json:async()=>rules};}},['delivery-info.js']);
+  assert.equal(new URL(request).searchParams.get('domain'),'new-brand.imweb.me');assert.ok(d.body.textContent.includes('새 도메인 안내'));
+});
+
+test('옵션 이름과 스타일을 설정하고 옵션과 요약 각각에 우선순위를 적용한다',async t=>{
+  const config={optionNames:{color:['color'],size:['기장']},noticeStyle:{badgeText:'<출고 안내>',color:'#123abc'}};
+  const {d}=await page(t,[rule('예약배송','기본',config),rule('예약배송','우선',{...config,priority:3}),rule('예약배송','요약전용',{...config,size:'L',placement:'배송요약만'})],{html:markup().replaceAll('Size','기장')});
+  assert.equal(d.querySelector('[data-size="M"] .reserved-shipping-date').textContent,'우선');
+  assert.equal(d.querySelector('[data-size="L"] .reserved-shipping-date'),null);
+  assert.equal(d.querySelector('.reserved-shipping-badge').textContent,'<출고 안내>');
+  assert.equal(d.querySelector('.reserved-shipping-date').style.color,'rgb(18, 58, 188)');
+  assert.ok(summary(d).includes('우선'));assert.ok(summary(d).includes('요약전용'));assert.ok(!summary(d).includes('기본'));
+});
+
+test('옵션만 노출하는 규칙은 배송 요약을 만들지 않는다',async t=>{
+  const {d}=await page(t,[rule('예약배송','옵션전용',{placement:'옵션만'})]);
+  assert.equal(summary(d),undefined);assert.equal(d.querySelector('.reserved-shipping-date').textContent,'옵션전용');
+});
+
+test('배송정보와 같은 세트 링크에는 높은 우선순위 문구를 한 번 표시한다',async t=>{
+  const {d}=await page(t,[rule('배송정보','이전'),rule('배송정보','새 배송',{priority:5}),rule('구매혜택','이전 링크',{setupProductId:'2'}),rule('구매혜택','{상품명} 보기',{priority:4,setupProductId:'2',setupLabel:'<직접 지정한 하의>'})],{html:benefitMarkup},['delivery-info.js','purchase-benefit-dustuff.js']);
+  assert.equal(d.querySelector('[data-sheet-notice="delivery"] .prod-detail-section__content').textContent,'새 배송');
+  assert.equal(d.querySelectorAll('.benefit-injected a').length,1);assert.equal(d.querySelector('.benefit-injected a').textContent,'<직접 지정한 하의> 보기');
+});
 test('긴 배송 요약은 같은 문구를 묶고 모든 옵션을 펼쳐 볼 수 있다',async t=>{
   const rules=Array.from({length:10},(_,i)=>rule('예약배송',i<8?'주문 후 15일':'10/8 이후 순차 출고',{size:'S'+i}));
   const {d,w}=await page(t,rules);
