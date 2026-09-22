@@ -5,6 +5,8 @@
   if (window[key]) return;
   const API_URL =
     "https://script.google.com/macros/s/AKfycbzHZKXnGomjSslR3C355roaWa7VYpcOdtzuAS7j9ZpT2QyGZAdf5OoYSqo5_DZRqBg/exec";
+  const CACHE_URL =
+    "https://imweb-notices-cache-4w4l3rcbpq-du.a.run.app/v1/rules";
   const aliases = {
     "neverseenbefore.imweb.me": "nvsbf.com",
     "dustystuff.imweb.me": "dustuff.co.kr",
@@ -46,47 +48,63 @@
       : Promise.resolve();
   let request;
 
-  async function fetchRules() {
-    const url = new URL(API_URL);
+  async function requestRules(endpoint, timeoutMs, cached = false) {
+    const url = new URL(endpoint);
     url.searchParams.set("domain", normalizeDomain(location.hostname));
     url.searchParams.set("productId", productId);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url.toString(), {
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error("API 응답 오류: " + response.status);
+      const data = await response.json();
+      if (!Array.isArray(data)) throw new Error("API 응답 형식 오류");
+      if (cached) {
+        const validUntil = Number(response.headers.get("X-Notice-Valid-Until"));
+        if (!Number.isFinite(validUntil) || validUntil <= Date.now())
+          throw new Error("안내 캐시 만료");
+      }
+      return data;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async function fetchData() {
+    // The cache is an acceleration path. Google remains the recovery source.
+    try {
+      return await requestRules(CACHE_URL, 1800, true);
+    } catch (_) {}
     for (let attempt = 0; attempt < 2; attempt++) {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000);
       try {
-        const response = await fetch(url.toString(), {
-          cache: "no-store",
-          signal: controller.signal,
-        });
-        if (!response.ok) throw new Error("API 응답 오류: " + response.status);
-        const data = await response.json();
-        if (!Array.isArray(data)) throw new Error("API 응답 형식 오류");
-        return data
-          .filter(
-            (item) =>
-              item &&
-              typeof item === "object" &&
-              !Array.isArray(item) &&
-              item.enabled !== false &&
-              (canonicalDomain(item.domain) === domain ||
-                (Array.isArray(item.domainAliases) &&
-                  item.domainAliases.some(
-                    (alias) =>
-                      normalizeDomain(alias) ===
-                      normalizeDomain(location.hostname),
-                  ))) &&
-              text(item.productId) === productId,
-          )
-          .sort(
-            (a, b) => (Number(b.priority) || 0) - (Number(a.priority) || 0),
-          );
+        return await requestRules(API_URL, 8000);
       } catch (error) {
         if (attempt === 1) throw error;
-      } finally {
-        clearTimeout(timeout);
       }
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
+  }
+
+  async function fetchRules() {
+    return (await fetchData())
+      .filter(
+        (item) =>
+          item &&
+          typeof item === "object" &&
+          !Array.isArray(item) &&
+          item.enabled !== false &&
+          (canonicalDomain(item.domain) === domain ||
+            (Array.isArray(item.domainAliases) &&
+              item.domainAliases.some(
+                (alias) =>
+                  normalizeDomain(alias) === normalizeDomain(location.hostname),
+              ))) &&
+          text(item.productId) === productId,
+      )
+      .sort((a, b) => (Number(b.priority) || 0) - (Number(a.priority) || 0));
   }
 
   function rules() {

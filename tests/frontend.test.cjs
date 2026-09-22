@@ -10,7 +10,7 @@ const rule = (type, message, overrides={}) => ({ enabled:true,domain:'example.co
 const pause = ms => new Promise(resolve=>setTimeout(resolve,ms));
 async function page(t, rules, options={}, order=['reserved-shipping.js']) {
   const dom=new JSDOM(options.html||markup(options),{url:options.url||'https://example.com/shop_view?idx=1',runScripts:'outside-only',pretendToBeVisual:true});t.after(()=>dom.window.close());
-  dom.window.fetch=options.fetch|| (async()=>({ok:true,json:async()=>rules}));
+  dom.window.fetch=async(...args)=>{const response=await (options.fetch|| (async()=>({ok:true,json:async()=>rules})))(...args);return {headers:{get:()=>String(Date.now()+60000)},...response};};
   for(const file of order){dom.window.eval(sources[file]);await pause(240);}
   return {w:dom.window,d:dom.window.document};
 }
@@ -110,6 +110,26 @@ test('상세 본문이 없어도 상품 정보 영역이 있으면 세트상품 
 test('네트워크 오류는 한 번만 재시도하고 정상 응답 후 안내를 복구한다',async t=>{
   let attempts=0;const rules=[rule('옵션문구','복구됨')];const {d}=await page(t,rules,{fetch:async()=>{attempts++;if(attempts===1)throw Error('temporary');return{ok:true,json:async()=>rules};}});
   await pause(100);assert.equal(attempts,2);assert.equal(d.querySelector('.reserved-shipping-date')?.textContent,'복구됨');
+});
+
+for(const reason of ['http','shape','expired'])test('캐시 '+reason+' 오류는 구글 원본으로 복구한다',async t=>{
+  const urls=[],rules=[rule('옵션문구','원본 복구')];
+  const {d}=await page(t,rules,{fetch:async url=>{
+    urls.push(url);
+    if(urls.length===1)return reason==='http'?{ok:false,status:503}:{ok:true,headers:{get:()=>String(reason==='expired'?Date.now()-1:Date.now()+60000)},json:async()=>reason==='shape'?{error:true}:rules};
+    return {ok:true,json:async()=>rules};
+  }});
+  assert.equal(urls.length,2);assert.equal(new URL(urls[0]).hostname,'imweb-notices-cache-4w4l3rcbpq-du.a.run.app');assert.equal(new URL(urls[1]).hostname,'script.google.com');assert.equal(d.querySelector('.reserved-shipping-date')?.textContent,'원본 복구');
+});
+
+test('캐시 응답이 멈추면 제한 시간 뒤 구글 조회로 전환하고 모든 기능이 공유한다',async t=>{
+  const urls=[],rules=[rule('옵션문구','시간초과 복구'),rule('배송정보','배송 복구')];
+  const {d}=await page(t,rules,{fetch:async(url,options)=>{
+    urls.push(url);
+    if(urls.length===1)return new Promise((resolve,reject)=>options.signal.addEventListener('abort',()=>reject(Error('aborted')),{once:true}));
+    return {ok:true,json:async()=>rules};
+  }},['delivery-info.js','reserved-shipping.js']);
+  await pause(1550);assert.equal(urls.length,2);assert.equal(d.querySelector('.reserved-shipping-date')?.textContent,'시간초과 복구');assert.ok(d.querySelector('[data-sheet-notice="delivery"]').textContent.includes('배송 복구'));
 });
 test('상품 옵션 영역이 통째로 교체되어도 다시 표시하며 무관한 리뷰 영역은 건드리지 않는다',async t=>{
   const {d}=await page(t,[rule('옵션문구','다시 표시')]);const old=d.querySelector('#prod_options');const holder=d.createElement('div');holder.innerHTML=markup();old.replaceWith(holder.querySelector('#prod_options'));await pause(60);assert.equal(d.querySelector('.reserved-shipping-date')?.textContent,'다시 표시');

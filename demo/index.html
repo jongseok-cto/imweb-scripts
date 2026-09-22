@@ -48,7 +48,7 @@
   }
   document.querySelector('nav a[href="?idx=1'+(scenario?'&scenario='+scenario:'')+'"]').setAttribute('aria-current','page');
   const originalFetch=window.fetch.bind(window);
-  window.fetch=(url,options)=>String(url).startsWith('https://script.google.com/macros/s/')?Promise.resolve({ok:true,json:()=>Promise.resolve(sample)}):originalFetch(url,options);
+  window.fetch=(url,options)=>(String(url).startsWith('https://script.google.com/macros/s/')||String(url).startsWith('https://imweb-notices-cache-4w4l3rcbpq-du.a.run.app/v1/rules?'))?Promise.resolve({ok:true,headers:{get:()=>String(Date.now()+60000)},json:()=>Promise.resolve(sample)}):originalFetch(url,options);
   document.querySelectorAll('a._requireOption').forEach(link=>link.addEventListener('click',event=>{event.preventDefault();if(event.target.closest('.btn-restock'))return;const size=link.closest('[data-size]').dataset.size;document.querySelector('.dropdown-toggle').textContent=size;document.querySelector('#selected').textContent='선택한 사이즈: '+size;}));
   document.addEventListener('click',event=>{if(event.target.closest('[data-sheet-benefit] a')){event.preventDefault();document.querySelector('#selected').textContent='세트상품 이동 링크 예시입니다. 실제 주문은 발생하지 않습니다.';}});
 </script>
