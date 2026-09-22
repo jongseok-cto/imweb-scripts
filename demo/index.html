@@ -4,6 +4,7 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>상품 안내 미리보기</title>
   <link rel="stylesheet" href="../reserved-shipping.css">
+  <link rel="stylesheet" href="../purchase-benefit-dustuff.css">
   <style>
     *{box-sizing:border-box}body{margin:0;background:#f3f5f7;color:#1b2934;font:15px/1.6 system-ui,sans-serif}main{max-width:840px;margin:40px auto;padding:0 20px}h1{font-size:30px;letter-spacing:-1px;margin:8px 0}h2{font-size:21px;margin:0 0 24px}.eyebrow{color:#25665b;font-weight:700;font-size:12px;letter-spacing:1px}.intro{color:#64747e;margin:0 0 28px}.card{background:white;border:1px solid #dfe5e8;border-radius:18px;padding:28px;margin-bottom:18px}.prod-detail-section,.prod-detail-section--delivery{display:grid;grid-template-columns:125px 1fr;gap:18px;padding:16px 0;border-bottom:1px solid #edf0f2}.prod-detail-section__title{color:#69777f;font-size:13px}.prod-detail-section__content{font-size:14px}.option_title{font-size:13px;color:#69777f;margin:20px 0 8px}.colors{display:flex;gap:12px}label{border:1px solid #ccd5da;border-radius:8px;padding:8px 15px;cursor:pointer}input{accent-color:#286657;margin-right:6px}.dropdown-toggle{background:white;border:1px solid #ccd5da;border-radius:7px;width:100%;text-align:left;padding:12px;font:inherit}.dropdown-menu{border:1px solid #ccd5da;border-radius:8px;margin-top:6px}.dropdown-item+ .dropdown-item{border-top:1px solid #edf0f2}a._requireOption{display:block;padding:14px;color:inherit;text-decoration:none;cursor:pointer}.tw-flex{display:flex;align-items:center;gap:10px}.btn-restock{margin-left:auto;border:1px solid #ccd5da;border-radius:5px;white-space:nowrap;background:white;font:11px system-ui;padding:6px}.guide{font-size:13px;color:#63737b}.guide b{color:#263a45}#selected{color:#25665b;font-size:13px;min-height:20px;margin-top:12px}@media(max-width:500px){main{margin:22px auto;padding:0 14px}.card{padding:20px 16px}.prod-detail-section,.prod-detail-section--delivery{grid-template-columns:85px 1fr;gap:12px}h1{font-size:25px}}
   </style>
@@ -12,7 +13,8 @@
   <span class="eyebrow">상품 문구 관리 · 개발 미리보기</span>
   <h1>배송 안내와 옵션 문구</h1>
   <p class="intro">색상을 바꾸면 해당 옵션의 문구가 바뀝니다. 아래 내용은 확인용 예시입니다.</p>
-  <section class="card"><h2>샘플 와이드 팬츠</h2>
+  <nav aria-label="확인할 예시" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px"><a href="?idx=1">기본 문구</a><a href="?idx=1&scenario=long">긴 배송 안내</a><a href="?idx=1&scenario=set">세트상품 판매중</a><a href="?idx=1&scenario=hidden">세트상품 숨김</a></nav>
+  <section class="card _item_detail_wrap"><h2>샘플 와이드 팬츠</h2>
     <div class="prod-detail-section--delivery"><span class="prod-detail-section__title">배송</span><span>택배 · 3,000원</span></div>
     <div id="prod_options">
       <div class="_form_parent"><div class="option_title">Color (필수)</div><div class="colors">
@@ -34,9 +36,20 @@
   // 데모 페이지에서만 샘플 데이터로 대체한다. 운영 파일에는 테스트용 주소/분기가 없다.
   const row=(type,color,size,message)=>({enabled:true,domain:location.hostname,productId:'1',type,color,size,message});
   const sample=[row('배송정보','','','제주·도서산간 지역은 배송이 1~2일 더 소요될 수 있습니다.'),row('예약배송','Black','M','주문일로부터 15일 후 순차 출고'),row('옵션문구','Black','M','* 한정 수량\n재입고 일정은 별도로 안내합니다.'),row('옵션문구','Black','L','기장이 넉넉한 사이즈입니다. 상세 실측을 꼭 확인해 주세요.'),row('옵션문구','White','all','밝은 색상은 비침이 있을 수 있습니다. 이너와 함께 착용해 주세요.')];
+  const scenario=new URLSearchParams(location.search).get('scenario');
+  if(scenario==='long') {
+    sample.splice(0,sample.length,...['Black','White'].flatMap(color=>['S','M','L','XL','2XL'].map(size=>row('예약배송',color,size,'주문일로부터 15일 후 순차 출고'))));
+    document.querySelector('.intro').textContent='10개 옵션의 같은 배송 문구를 묶었습니다. 안내를 펼치면 모든 적용 옵션을 확인할 수 있습니다.';
+  }
+  if(scenario==='set'||scenario==='hidden') {
+    sample.splice(0,sample.length,{...row('구매혜택','','','할인 받고 {상품명} 셋업으로 구매하러 가기→'),productName:'샘플 와이드 팬츠',setupProductId:'2',setupTitle:'샘플 와이드 팬츠 / 샘플 후드 SET',discount:'15%',setupAvailable:scenario==='set'});
+    document.querySelector('.intro').textContent=scenario==='set'?'판매중인 세트상품은 아래에 구매 혜택 링크가 표시됩니다.':'연결된 세트상품이 숨김·품절·삭제 상태이면 구매 혜택 링크를 표시하지 않습니다.';
+  }
+  document.querySelector('nav a[href="?idx=1'+(scenario?'&scenario='+scenario:'')+'"]').setAttribute('aria-current','page');
   const originalFetch=window.fetch.bind(window);
   window.fetch=(url,options)=>String(url).startsWith('https://script.google.com/macros/s/')?Promise.resolve({ok:true,json:()=>Promise.resolve(sample)}):originalFetch(url,options);
   document.querySelectorAll('a._requireOption').forEach(link=>link.addEventListener('click',event=>{event.preventDefault();if(event.target.closest('.btn-restock'))return;const size=link.closest('[data-size]').dataset.size;document.querySelector('.dropdown-toggle').textContent=size;document.querySelector('#selected').textContent='선택한 사이즈: '+size;}));
+  document.addEventListener('click',event=>{if(event.target.closest('[data-sheet-benefit] a')){event.preventDefault();document.querySelector('#selected').textContent='세트상품 이동 링크 예시입니다. 실제 주문은 발생하지 않습니다.';}});
 </script>
-<script src="../delivery-info.js"></script><script src="../reserved-shipping.js"></script>
+<script src="../delivery-info.js"></script><script src="../reserved-shipping.js"></script><script src="../purchase-benefit-dustuff.js"></script>
 </body></html>

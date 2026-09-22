@@ -1,11 +1,11 @@
 {
-  "sourceCommit": "2c76cc9676adb56699abe2c8529419b557e2441d",
+  "sourceCommit": "ef9552ec64556d3cc80b71d61021d2b0687f3d8e",
   "files": {
     "delivery-info.js": "4957905da43398077228aa967b4497ae89d664199adcae604ca131add173e3ef",
     "reserved-shipping.js": "fcf10e55c0a532f599cf9adb8d7df8d17a0eb1dc8f01611775d40d4bf9970e5d",
     "purchase-benefit-dustuff.js": "a351fa543ff19d78253ab485e6b25ce3443b3a23da436fbe93e4be685837567c",
     "reserved-shipping.css": "0e2c1cee2b825611f4382a1c9151f1dbf2717a11b65c7a9c927909f2addca0fe",
     "purchase-benefit-dustuff.css": "a9c7d30797e4634314793b108858f7dae3553373399470b3531c80ca68b47ea6",
-    "demo/index.html": "34fb6f886095bc97c8ff17ed7ebf91c5c0728f6616fbc76912f283d4a92dbf11"
+    "demo/index.html": "44aef33d63b7017d70396487fdb13d189d41ebe2629855bd86fcd336b8138d3b"
   }
 }
