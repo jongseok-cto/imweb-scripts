@@ -24,17 +24,34 @@ test('시트에 추가한 도메인으로 요청하고 새 별칭의 안내를 �
 
 test('옵션 이름과 스타일을 설정하고 옵션과 요약 각각에 우선순위를 적용한다',async t=>{
   const config={optionNames:{color:['color'],size:['기장']},noticeStyle:{badgeText:'<출고 안내>',color:'#123abc'}};
-  const {d}=await page(t,[rule('예약배송','기본',config),rule('예약배송','우선',{...config,priority:3}),rule('예약배송','요약전용',{...config,size:'L',placement:'배송요약만'})],{html:markup().replaceAll('Size','기장')});
+  const {d}=await page(t,[rule('예약배송','기본',config),rule('예약배송','우선',{...config,priority:3}),rule('예약배송','이전 요약',{...config,size:'L',placement:'배송요약만'}),rule('예약배송','요약전용',{...config,size:'L',placement:'배송요약만',priority:5})],{html:markup().replaceAll('Size','기장')});
   assert.equal(d.querySelector('[data-size="M"] .reserved-shipping-date').textContent,'우선');
   assert.equal(d.querySelector('[data-size="L"] .reserved-shipping-date'),null);
   assert.equal(d.querySelector('.reserved-shipping-badge').textContent,'<출고 안내>');
   assert.equal(d.querySelector('.reserved-shipping-date').style.color,'rgb(18, 58, 188)');
-  assert.ok(summary(d).includes('우선'));assert.ok(summary(d).includes('요약전용'));assert.ok(!summary(d).includes('기본'));
+  assert.equal(summary(d),'Black(L) 요약전용');
 });
 
-test('옵션만 노출하는 규칙은 배송 요약을 만들지 않는다',async t=>{
-  const {d}=await page(t,[rule('예약배송','옵션전용',{placement:'옵션만'})]);
+for(const placement of [undefined,'','기본','옵션만'])test('예약배송 기본 표시는 옵션 안내만 유지한다: '+String(placement),async t=>{
+  const {d}=await page(t,[rule('예약배송','옵션전용',{placement})]);
   assert.equal(summary(d),undefined);assert.equal(d.querySelector('.reserved-shipping-date').textContent,'옵션전용');
+});
+
+for(const mobile of [false,true])test('색상 변경·옵션 교체·뒤로 가기에도 기본 예약배송 요약을 만들지 않는다: '+(mobile?'모바일':'PC'),async t=>{
+  const rules=Array.from({length:12},(_,i)=>rule('예약배송',i<6?'10/16 이후 순차 출고':'10/2 이후 순차 출고',{color:i<6?'Black':'White',size:['M','L','XL','2XL','3XL','4XL'][i%6]}));
+  const {d,w}=await page(t,rules,{mobile});
+  assert.equal(summary(d),undefined);assert.equal(d.querySelector('[data-size="M"] .reserved-shipping-date').textContent,'10/16 이후 순차 출고');
+  const white=d.querySelector('[data-title="White"] input');white.checked=true;white.dispatchEvent(new w.Event('change',{bubbles:true}));await pause(150);
+  assert.equal(summary(d),undefined);assert.equal(d.querySelector('[data-size="M"] .reserved-shipping-date').textContent,'10/2 이후 순차 출고');
+  w.dispatchEvent(new w.PageTransitionEvent('pagehide',{persisted:true}));w.dispatchEvent(new w.PageTransitionEvent('pageshow',{persisted:true}));
+  const holder=d.createElement('div');holder.innerHTML=markup({mobile});d.querySelector('#prod_options').replaceWith(holder.querySelector('#prod_options'));await pause(80);
+  assert.equal(d.querySelectorAll('[data-sheet-notice="reserved-summary"]').length,0);assert.equal(d.querySelector('[data-size="M"] .reserved-shipping-date').textContent,'10/16 이후 순차 출고');
+  assert.equal(d.querySelectorAll('.reserved-shipping-text').length,2);assert.equal(d.querySelector('.prod-detail-section--delivery').textContent,'배송');
+});
+
+for(const rules of [[],[rule('예약배송','9/30 이후 순차 출고')]])test('이전 자동 요약만 제거하고 직접 작성한 배송 안내는 보존한다: 규칙 '+rules.length,async t=>{
+  const html=markup()+'<div data-sheet-notice="reserved-summary"><div class="prod-detail-section__content">예전 자동 요약</div></div><div data-sheet-notice="delivery"><div class="prod-detail-section__content">직접 쓴 배송 안내</div></div>';
+  const {d}=await page(t,rules,{html});assert.equal(d.querySelector('[data-sheet-notice="reserved-summary"]'),null);assert.equal(d.querySelector('[data-sheet-notice="delivery"]').textContent,'직접 쓴 배송 안내');
 });
 
 test('배송정보와 같은 세트 링크에는 높은 우선순위 문구를 한 번 표시한다',async t=>{
@@ -43,7 +60,7 @@ test('배송정보와 같은 세트 링크에는 높은 우선순위 문구를 �
   assert.equal(d.querySelectorAll('.benefit-injected a').length,1);assert.equal(d.querySelector('.benefit-injected a').textContent,'<직접 지정한 하의> 보기');
 });
 test('긴 배송 요약은 같은 문구를 묶고 모든 옵션을 펼쳐 볼 수 있다',async t=>{
-  const rules=Array.from({length:10},(_,i)=>rule('예약배송',i<8?'주문 후 15일':'10/8 이후 순차 출고',{size:'S'+i}));
+  const rules=Array.from({length:10},(_,i)=>rule('예약배송',i<8?'주문 후 15일':'10/8 이후 순차 출고',{size:'S'+i,placement:'배송요약만'}));
   const {d,w}=await page(t,rules);
   const details=d.querySelector('[data-sheet-notice="reserved-summary"] details');assert.ok(details);assert.equal(details.open,false);
   const content=details.querySelector('div').textContent;
@@ -52,14 +69,17 @@ test('긴 배송 요약은 같은 문구를 묶고 모든 옵션을 펼쳐 볼 �
   details.open=true;w.dispatchEvent(new w.PageTransitionEvent('pageshow',{persisted:true}));await pause(50);assert.equal(details.open,true);
 });
 test('일반 배송 문장/별표를 보존하고 출고 문장을 중복하지 않는다',async t=>{
-  const {d}=await page(t,[rule('예약배송','* 주문일로부터 15일 후 순차 출고')]);assert.equal(summary(d),'Black(M) * 주문일로부터 15일 후 순차 출고');
+  const {d}=await page(t,[rule('예약배송','* 주문일로부터 15일 후 순차 출고',{placement:'배송요약만'})]);assert.equal(summary(d),'Black(M) * 주문일로부터 15일 후 순차 출고');
 });
 test('날짜 전용 요약은 유지하되 혼합 문장과 추가 조건은 그대로 표시한다',async t=>{
-  const {d}=await page(t,[rule('예약배송','10/8 이후 순차 출고'),rule('예약배송','10/9 이후 순차 출고',{size:'L'})]);assert.equal(summary(d),'Black(M) 10월 8일 / Black(L) 10월 9일 이후 순차 출고됩니다.');
-  const p=await page(t,[rule('예약배송','10/8 이후 순차 출고 (변동 가능)'),rule('예약배송','주문 후 15일',{size:'L'})]);assert.equal(summary(p.d),'Black(M) 10/8 이후 순차 출고 (변동 가능) / Black(L) 주문 후 15일');
+  const {d}=await page(t,[rule('예약배송','10/8 이후 순차 출고',{placement:'배송요약만'}),rule('예약배송','10/9 이후 순차 출고',{size:'L',placement:'배송요약만'})]);assert.equal(summary(d),'Black(M) 10월 8일 / Black(L) 10월 9일 이후 순차 출고됩니다.');
+  const p=await page(t,[rule('예약배송','10/8 이후 순차 출고 (변동 가능)',{placement:'배송요약만'}),rule('예약배송','주문 후 15일',{size:'L',placement:'배송요약만'})]);assert.equal(summary(p.d),'Black(M) 10/8 이후 순차 출고 (변동 가능) / Black(L) 주문 후 15일');
 });
-for(const order of [['delivery-info.js','reserved-shipping.js'],['reserved-shipping.js','delivery-info.js']])test('두 기능 로드 순서와 무관하게 배송 문구와 옵션 요약 공존: '+order.join(' → '),async t=>{
-  const {d}=await page(t,[rule('배송정보','직접 쓴 배송 안내'),rule('예약배송','10/8')],{},order);assert.equal(d.querySelector('[data-sheet-notice="delivery"] .prod-detail-section__content').textContent,'직접 쓴 배송 안내');assert.ok(summary(d).includes('10월 8일'));assert.equal(d.querySelectorAll('[data-sheet-notice]').length,2);
+for(const order of [['delivery-info.js','reserved-shipping.js'],['reserved-shipping.js','delivery-info.js']])for(const placement of [undefined,'배송요약만'])test('로드 순서와 무관하게 직접 쓴 배송 안내와 선택한 위치 보존: '+order.join(' → ')+' / '+String(placement),async t=>{
+  const {d}=await page(t,[rule('배송정보','직접 쓴 배송 안내'),rule('예약배송','10/8',{placement})],{},order);assert.equal(d.querySelector('[data-sheet-notice="delivery"] .prod-detail-section__content').textContent,'직접 쓴 배송 안내');
+  if(placement==='배송요약만'){assert.ok(summary(d).includes('10월 8일'));assert.equal(d.querySelectorAll('.reserved-shipping-text').length,0);}
+  else{assert.equal(summary(d),undefined);assert.equal(d.querySelector('.reserved-shipping-date').textContent,'10/8');}
+  assert.equal(d.querySelectorAll('[data-sheet-notice]').length,placement==='배송요약만'?2:1);
 });
 test('옵션문구는 HTML 실행 없이 원문/줄바꿈을 표시하고 배송 배지나 요약을 만들지 않는다',async t=>{
   const text='* 한정 수량\n<img src=x onerror=alert(1)> & 안내';const {d}=await page(t,[rule('옵션문구',text)]);assert.equal(d.querySelector('.reserved-shipping-date').textContent,text);assert.equal(d.querySelectorAll('.reserved-shipping-badge,img,[data-sheet-notice]').length,0);

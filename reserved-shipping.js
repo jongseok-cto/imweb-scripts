@@ -176,7 +176,10 @@
       ["예약배송", "옵션문구"].includes(cleanText(item.type)),
     );
 
-    if (!productSettings.length) return;
+    if (!productSettings.length) {
+      syncDetailDeliveryNotice();
+      return;
+    }
     const settings = productSettings[0];
     if (Array.isArray(settings.optionNames?.color))
       COLOR_NAMES = settings.optionNames.color.map(normalizeOption);
@@ -189,7 +192,7 @@
     if (productSettings.some((item) => cleanText(item.type) === "예약배송"))
       document.body.classList.add("is-reserve-delivery");
 
-    /* 상세페이지 배송 정보 자동 생성 */
+    /* 명시적으로 선택한 배송 요약만 표시 */
     syncDetailDeliveryNotice();
 
     startObserver();
@@ -886,7 +889,7 @@
   }
 
   /* ========================================
-   상세페이지 배송 정보 자동 생성
+   상세페이지 배송 요약 (배송요약만 설정 시)
 ======================================== */
 
   function syncDetailDeliveryNotice() {
@@ -894,7 +897,7 @@
       (item) =>
         cleanText(item.type) === "예약배송" &&
         cleanText(item.message) &&
-        item.placement !== "옵션만",
+        item.placement === "배송요약만",
     );
     const notices = [],
       used = new Set();
@@ -913,7 +916,12 @@
         color + (size && size.toLowerCase() !== "all" ? "(" + size + ")" : "");
       notices.push({ option, message, date });
     });
-    if (!notices.length) return;
+    if (!notices.length) {
+      document
+        .querySelectorAll('[data-sheet-notice="reserved-summary"]')
+        .forEach((element) => element.remove());
+      return;
+    }
     let finalMessage =
       notices
         .map(
