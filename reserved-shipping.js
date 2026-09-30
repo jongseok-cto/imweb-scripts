@@ -74,15 +74,41 @@
   }
 
   async function fetchData() {
+    const sampled =
+      typeof navigator.sendBeacon === "function" && Math.random() < 0.1;
+    const startedAt = performance.now();
+    const report = (outcome) => {
+      if (!sampled) return;
+      try {
+        navigator.sendBeacon(
+          new URL("/v1/delivery", CACHE_URL).href,
+          JSON.stringify({
+            schema: 1,
+            outcome,
+            latencyMs: Math.min(
+              60000,
+              Math.max(0, Math.round(performance.now() - startedAt)),
+            ),
+          }),
+        );
+      } catch (_) {} // Observability cannot delay or fail the customer notice.
+    };
     // The cache is an acceleration path. Google remains the recovery source.
     try {
-      return await requestRules(CACHE_URL, 1800, true);
+      const data = await requestRules(CACHE_URL, 1800, true);
+      report("CACHE");
+      return data;
     } catch (_) {}
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        return await requestRules(API_URL, 8000);
+        const data = await requestRules(API_URL, 8000);
+        report("GOOGLE");
+        return data;
       } catch (error) {
-        if (attempt === 1) throw error;
+        if (attempt === 1) {
+          report("UNAVAILABLE");
+          throw error;
+        }
       }
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
