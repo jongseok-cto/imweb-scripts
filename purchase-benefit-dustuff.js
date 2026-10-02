@@ -221,7 +221,17 @@
         "할인 받고 {상품명} 셋업으로 구매하러 가기→";
       message = message.replace(/\{상품명\}/g, () => counterpart || "세트상품");
       const discount = core.text(benefit.discount);
-      if (
+      if (benefit.setupLabel === "PACK_AUTO_V1") {
+        // The signed API already constructs quantity and current public discount wording.
+        const normalize = (value) =>
+          core.text(value).normalize("NFKC").replace(/\s+/g, " ");
+        if (
+          normalize(benefit.productName) !== normalize(currentName) ||
+          !Number.isFinite(Date.parse(benefit.endsAt)) ||
+          Date.parse(benefit.endsAt) <= Date.now()
+        )
+          return;
+      } else if (
         /^\d+(?:\.\d+)?%$/.test(discount) &&
         parseFloat(discount) > 0 &&
         parseFloat(discount) <= 100
@@ -250,6 +260,11 @@
       content.append(paragraph);
       section.append(title, content);
       fragment.append(section);
+      if (benefit.setupLabel === "PACK_AUTO_V1")
+        setTimeout(
+          () => section.remove(),
+          Math.max(1, Date.parse(benefit.endsAt) - Date.now()),
+        );
     });
     const delivery = detail.querySelector(".prod-detail-section--delivery");
     if (delivery) {

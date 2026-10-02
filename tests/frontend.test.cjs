@@ -16,6 +16,14 @@ async function page(t, rules, options={}, order=['reserved-shipping.js']) {
 }
 const summary = d=>d.querySelector('[data-sheet-notice="reserved-summary"] .prod-detail-section__content')?.textContent;
 
+test('automatically discovered PACK wording has one discount label and expires on an open page',async t=>{
+  const row=rule('구매혜택','2PACK 구매 시 15% 할인→',{productName:'새 상품',setupProductId:'2',setupTitle:'[2PACK] 새 상품',setupLabel:'PACK_AUTO_V1',setupAvailable:true,discount:'15%',endsAt:new Date(Date.now()+650).toISOString()});
+  const html='<h1 class="view_tit">새  상품</h1><div class="_item_detail_wrap"></div>';
+  const {d}=await page(t,[row],{html},['purchase-benefit-dustuff.js']);
+  assert.equal(d.querySelector('[data-sheet-benefit] a').textContent,row.message);
+  await pause(450);assert.equal(d.querySelector('[data-sheet-benefit]'),null);
+});
+
 test('시트에 추가한 도메인으로 요청하고 새 별칭의 안내를 표시한다',async t=>{
   let request;const rules=[rule('배송정보','새 도메인 안내',{domainAliases:['new-brand.imweb.me']})];
   const {d}=await page(t,rules,{url:'https://new-brand.imweb.me/shop_view?idx=1',fetch:async url=>{request=url;return{ok:true,json:async()=>rules};}},['delivery-info.js']);

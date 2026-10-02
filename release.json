@@ -1,9 +1,9 @@
 {
-  "sourceCommit": "8548512ca21f6fb7bb9f23ac4edc8f8593eeb7d5",
+  "sourceCommit": "39ebb1fdfacb1f3768ac129b3022801eb88cf0a1",
   "files": {
     "delivery-info.js": "a148a7800d7cc1abde3d60bba53ada2b9eabf4e69b9a238a203cb21819b39703",
     "reserved-shipping.js": "9fabf51edc8b1694056c1fe3ba26c145ab2fd00788d7367097b5205782247d03",
-    "purchase-benefit-dustuff.js": "53d7b2e5fc47cef4017cbe910677c61247fb5f460a993a9e70e63cf4f236108b",
+    "purchase-benefit-dustuff.js": "d78bd371f59b4a42a3c49a42c81a3747dbeb644b18375f9b7bcd457dbd01b64a",
     "reserved-shipping.css": "0e2c1cee2b825611f4382a1c9151f1dbf2717a11b65c7a9c927909f2addca0fe",
     "purchase-benefit-dustuff.css": "a9c7d30797e4634314793b108858f7dae3553373399470b3531c80ca68b47ea6",
     "demo/index.html": "7f6763e9e0f98c201a891745ac6a7dc4c529371a89f4d3c578eb8930332a3477"
