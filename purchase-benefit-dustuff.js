@@ -48,11 +48,36 @@
       : Promise.resolve();
   let request;
 
-  async function requestRules(endpoint, timeoutMs, cached = false) {
+  const pageRequests = new AbortController();
+  window.addEventListener("pagehide", (event) => {
+    if (!event.persisted) pageRequests.abort();
+  });
+
+  function pause(ms, signal = pageRequests.signal) {
+    return new Promise((resolve, reject) => {
+      if (signal.aborted) return reject(new Error("안내 조회 종료"));
+      const finish = () => {
+        signal.removeEventListener("abort", cancel);
+        resolve();
+      };
+      const cancel = () => {
+        clearTimeout(timer);
+        signal.removeEventListener("abort", cancel);
+        reject(new Error("안내 조회 종료"));
+      };
+      const timer = setTimeout(finish, ms);
+      signal.addEventListener("abort", cancel, { once: true });
+    });
+  }
+
+  async function requestRules(endpoint, timeoutMs, cached = false, signal) {
     const url = new URL(endpoint);
     url.searchParams.set("domain", normalizeDomain(location.hostname));
     url.searchParams.set("productId", productId);
     const controller = new AbortController();
+    const cancel = () => controller.abort();
+    signal.addEventListener("abort", cancel, { once: true });
+    if (signal.aborted) cancel();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await fetch(url.toString(), {
@@ -70,6 +95,42 @@
       return data;
     } finally {
       clearTimeout(timeout);
+      signal.removeEventListener("abort", cancel);
+    }
+  }
+
+  async function fetchRound() {
+    const round = new AbortController();
+    const cancel = () => round.abort();
+    pageRequests.signal.addEventListener("abort", cancel, { once: true });
+    if (pageRequests.signal.aborted) cancel();
+    // Keep the cache request alive for the server's bounded origin recovery.
+    // At 1.8s start Google as a second path; do not discard the pending cache.
+    const cached = requestRules(CACHE_URL, 12500, true, round.signal).then(
+      (data) => ({ data, outcome: "CACHE" }),
+    );
+    try {
+      const fast = await Promise.race([
+        cached.catch(() => null),
+        pause(1800, round.signal).then(() => null),
+      ]);
+      if (fast) return fast;
+      const fallback = (async () => {
+        for (let attempt = 0; attempt < 2; attempt++) {
+          if (round.signal.aborted) throw new Error("안내 조회 종료");
+          try {
+            const data = await requestRules(API_URL, 8000, false, round.signal);
+            return { data, outcome: "GOOGLE" };
+          } catch (error) {
+            if (attempt === 1 || round.signal.aborted) throw error;
+          }
+          await pause(250, round.signal);
+        }
+      })();
+      return await Promise.any([cached, fallback]);
+    } finally {
+      round.abort();
+      pageRequests.signal.removeEventListener("abort", cancel);
     }
   }
 
@@ -93,24 +154,21 @@
         );
       } catch (_) {} // Observability cannot delay or fail the customer notice.
     };
-    // The cache is an acceleration path. Google remains the recovery source.
-    try {
-      const data = await requestRules(CACHE_URL, 1800, true);
-      report("CACHE");
-      return data;
-    } catch (_) {}
-    for (let attempt = 0; attempt < 2; attempt++) {
+    // Retry a shared read after transient failures/cooldown, so all features
+    // can recover on the same page without a customer refresh. No stale data
+    // or synthetic empty result is used to conceal an unavailable origin.
+    for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const data = await requestRules(API_URL, 8000);
-        report("GOOGLE");
+        const { data, outcome } = await fetchRound();
+        report(outcome);
         return data;
       } catch (error) {
-        if (attempt === 1) {
-          report("UNAVAILABLE");
+        if (attempt === 2 || pageRequests.signal.aborted) {
+          if (!pageRequests.signal.aborted) report("UNAVAILABLE");
           throw error;
         }
       }
-      await new Promise((resolve) => setTimeout(resolve, 250));
+      await pause(attempt === 0 ? 5000 : 10000);
     }
   }
 
