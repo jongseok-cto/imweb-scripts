@@ -121,6 +121,84 @@ const notice = {
 };
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+test("the shared notice read starts before late page scripts finish, while DOM initialization waits", async (t) => {
+  const dom = new JSDOM("", {
+    url: "https://armykaji.com/shop_view/?idx=2153",
+    runScripts: "outside-only",
+  });
+  t.after(() => dom.window.close());
+  const callbacks = [];
+  let ready = false,
+    reads = 0,
+    initialized = false;
+  Object.defineProperty(dom.window.document, "readyState", {
+    get: () => (ready ? "interactive" : "loading"),
+  });
+  const listen = dom.window.document.addEventListener.bind(dom.window.document);
+  dom.window.document.addEventListener = (name, fn, ...rest) => {
+    if (name === "DOMContentLoaded") callbacks.push(fn);
+    else listen(name, fn, ...rest);
+  };
+  dom.window.fetch = async () => {
+    reads++;
+    return {
+      ok: true,
+      headers: { get: () => String(Date.now() + 60000) },
+      json: async () => [],
+    };
+  };
+  dom.window.eval(source);
+  const core = dom.window.__IMWEB_PRODUCT_NOTICES_V1__;
+  core.start("first", async () => {
+    await core.rules();
+    initialized = true;
+  });
+  core.start("second", async () => {
+    await core.rules();
+  });
+  assert.equal(reads, 1);
+  await core.rules();
+  assert.equal(initialized, false);
+  ready = true;
+  callbacks.forEach((fn) => fn(new dom.window.Event("DOMContentLoaded")));
+  await delay(5);
+  assert.equal(initialized, true);
+  assert.equal(reads, 1);
+});
+
+test("Google recovery requests automatic PACK and SET metadata with ordinary notices", async (t) => {
+  const pack = {
+    enabled: true,
+    domain: "closeby2.com",
+    productId: "1608",
+    type: "구매혜택",
+    setupLabel: "PACK_AUTO_V1",
+    setupAvailable: true,
+    setupProductId: "2000",
+    message: "2PACK 상품 보러 가기→",
+    endsAt: new Date(Date.now() + 60000).toISOString(),
+  };
+  const p = recoveryPage(t, async (_, url) => {
+    const request = new URL(url);
+    if (request.hostname !== "script.google.com") throw Error("temporary");
+    return request.searchParams.get("packs") === "1" ? [pack] : [];
+  });
+  const rows = await p.w.__IMWEB_PRODUCT_NOTICES_V1__.rules();
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].setupProductId, "2000");
+  await delay(5);
+  assert.equal(
+    p.d.querySelector("[data-sheet-benefit] a")?.textContent,
+    pack.message,
+  );
+  assert.equal(
+    new URL(p.d.querySelector("[data-sheet-benefit] a").href).searchParams.get(
+      "idx",
+    ),
+    "2000",
+  );
+});
+
 test("a slow cache result survives the Google fallback failure and renders option notices", async (t) => {
   let cacheWasAborted = false;
   const p = recoveryPage(t, async (call, url, signal) => {
