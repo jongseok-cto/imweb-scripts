@@ -74,6 +74,8 @@
     const url = new URL(endpoint);
     url.searchParams.set("domain", normalizeDomain(location.hostname));
     url.searchParams.set("productId", productId);
+    // The normal endpoint omits automatic PACK/SET rules unless requested.
+    if (!cached) url.searchParams.set("packs", "1");
     const controller = new AbortController();
     const cancel = () => controller.abort();
     signal.addEventListener("abort", cancel, { once: true });
@@ -199,6 +201,8 @@
   function start(feature, init) {
     if (!/^\d+$/.test(productId) || started.has(feature)) return;
     started.add(feature);
+    // Overlap the shared read with document loading; DOM work still waits below.
+    rules().catch(() => {});
     ready
       .then(init)
       .catch((error) => console.error(feature + " 안내 불러오기 실패:", error));
