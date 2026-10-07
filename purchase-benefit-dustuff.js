@@ -249,6 +249,10 @@
         (item) =>
           core.text(item.type) === "구매혜택" &&
           item.setupAvailable !== false &&
+          !(
+            item.setupLabel === "PACK_AUTO_V1" &&
+            ["kissofsummer.co.kr", "mascolino.co.kr"].includes(core.domain)
+          ) &&
           /^\d+$/.test(core.text(item.setupProductId)),
       )
       .filter((item) => {
@@ -281,10 +285,8 @@
       const discount = core.text(benefit.discount);
       if (benefit.setupLabel === "PACK_AUTO_V1") {
         // The signed API already constructs quantity and current public discount wording.
-        const normalize = (value) =>
-          core.text(value).normalize("NFKC").replace(/\s+/g, " ");
         if (
-          normalize(benefit.productName) !== normalize(currentName) ||
+          core.text(benefit.productId) !== core.productId ||
           !Number.isFinite(Date.parse(benefit.endsAt)) ||
           Date.parse(benefit.endsAt) <= Date.now()
         )

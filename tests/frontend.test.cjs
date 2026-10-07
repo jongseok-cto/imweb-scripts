@@ -16,6 +16,24 @@ async function page(t, rules, options={}, order=['reserved-shipping.js']) {
 }
 const summary = d=>d.querySelector('[data-sheet-notice="reserved-summary"] .prod-detail-section__content')?.textContent;
 
+test('예약판매로 이름이 바뀌어도 아미카지 출고 안내와 PACK을 상품번호로 한 번만 표시한다',async t=>{
+  let calls=0;
+  const rows=[rule('예약배송','10/16 이후 순차 출고',{domain:'armykaji.com',productName:'[당일출고] 투피스 와플 티'}),
+    rule('구매혜택','2PACK 상품 보러 가기→',{domain:'armykaji.com',productName:'[당일출고] 투피스 와플 티',setupProductId:'2',setupLabel:'PACK_AUTO_V1',setupAvailable:true,endsAt:new Date(Date.now()+60000).toISOString()}),
+    rule('구매혜택','다른 상품',{domain:'armykaji.com',productId:'99',setupProductId:'3'})];
+  const html='<div class="_item_detail_wrap"><h1 class="view_tit">[예약판매] 투피스 와플 티</h1>'+markup()+'</div>';
+  const {d}=await page(t,rows,{html,url:'https://armykaji.com/shop_view?idx=1',fetch:async()=>{calls++;return{ok:true,json:async()=>rows};}},['reserved-shipping.js','delivery-info.js','purchase-benefit-dustuff.js']);
+  assert.equal(calls,1);assert.equal(d.querySelectorAll('[data-sheet-benefit] a').length,1);
+  assert.equal(new URL(d.querySelector('[data-sheet-benefit] a').href).searchParams.get('idx'),'2');
+  assert.equal(d.querySelector('.reserved-shipping-date').textContent,'10/16 이후 순차 출고');
+});
+
+test('공통 렌더러는 전용 PACK 화면과 중복 안내를 만들지 않는다',async t=>{
+  const row=rule('구매혜택','2PACK 보기',{domain:'kissofsummer.co.kr',setupProductId:'2',setupLabel:'PACK_AUTO_V1',setupAvailable:true,endsAt:new Date(Date.now()+60000).toISOString()});
+  const {d}=await page(t,[row],{html:'<div class="_item_detail_wrap"></div>',url:'https://kissofsummer.co.kr/shop_view?idx=1'},['reserved-shipping.js']);
+  assert.equal(d.querySelector('[data-sheet-benefit]'),null);
+});
+
 test('automatically discovered PACK wording has one discount label and expires on an open page',async t=>{
   const row=rule('구매혜택','2PACK 구매 시 15% 할인→',{productName:'새 상품',setupProductId:'2',setupTitle:'[2PACK] 새 상품',setupLabel:'PACK_AUTO_V1',setupAvailable:true,discount:'15%',endsAt:new Date(Date.now()+650).toISOString()});
   const html='<h1 class="view_tit">새  상품</h1><div class="_item_detail_wrap"></div>';
