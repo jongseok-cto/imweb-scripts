@@ -193,8 +193,8 @@
       .sort((a, b) => (Number(b.priority) || 0) - (Number(a.priority) || 0));
   }
 
-  function rules() {
-    if (!request) request = fetchRules();
+  function rules(fresh = false) {
+    if (fresh || !request) request = fetchRules();
     return request;
   }
 
@@ -273,101 +273,135 @@
 
 (function () {
   const core = window.__IMWEB_PRODUCT_NOTICES_V1__;
-  core.start("구매혜택", async function () {
-    const seen = new Set();
-    const benefits = (await core.rules())
-      .filter(
-        (item) =>
-          core.text(item.type) === "구매혜택" &&
-          item.setupAvailable !== false &&
-          !(
-            item.setupLabel === "PACK_AUTO_V1" &&
-            ["kissofsummer.co.kr", "mascolino.co.kr"].includes(core.domain)
-          ) &&
-          /^\d+$/.test(core.text(item.setupProductId)),
-      )
-      .filter((item) => {
-        const id = core.text(item.setupProductId);
-        if (seen.has(id)) return false;
-        seen.add(id);
-        return true;
-      });
-    if (!benefits.length) return;
-    const detail = await core.waitFor("._item_detail_wrap");
-    if (!detail) return;
-    const currentTitle = document.querySelector("h1.view_tit");
-    const currentName = getProductTitle(currentTitle);
-    // 소유 표시가 있는 생성물만 교체한다. 상세 본문의 숨겨진 복제본은 필요하지 않다.
-    detail
-      .querySelectorAll('[data-sheet-benefit="true"]')
-      .forEach((element) => element.remove());
-    const fragment = document.createDocumentFragment();
-    benefits.forEach((benefit) => {
-      const counterpart =
-        core.text(benefit.setupLabel) ||
-        getCounterpartName(
-          core.text(benefit.setupTitle),
-          currentName || core.text(benefit.productName),
-        );
-      let message =
-        core.text(benefit.message) ||
-        "할인 받고 {상품명} 셋업으로 구매하러 가기→";
-      message = message.replace(/\{상품명\}/g, () => counterpart || "세트상품");
-      const discount = core.text(benefit.discount);
-      if (benefit.setupLabel === "PACK_AUTO_V1") {
-        // The signed API already constructs quantity and current public discount wording.
-        if (
-          core.text(benefit.productId) !== core.productId ||
-          !Number.isFinite(Date.parse(benefit.endsAt)) ||
-          Date.parse(benefit.endsAt) <= Date.now()
-        )
-          return;
-      } else if (
-        /^\d+(?:\.\d+)?%$/.test(discount) &&
-        parseFloat(discount) > 0 &&
-        parseFloat(discount) <= 100
-      ) {
-        message = discount + " " + message;
-      } else {
-        message = message.replace(/^할인\s*받고\s*/i, "");
-      }
-      const section = document.createElement("div");
-      section.className = "benefit-wrap prod-detail-section benefit-injected";
-      section.dataset.sheetBenefit = "true";
-      section.style.display = "flex";
-      const title = document.createElement("div");
-      title.className = "prod-detail-section__title";
-      title.textContent = "구매 혜택";
-      const content = document.createElement("div");
-      content.className = "prod-detail-section__content";
-      const paragraph = document.createElement("p");
-      paragraph.className = "prod-detail-section__item";
-      const link = document.createElement("a");
-      const url = new URL("/shop_view", location.origin);
-      url.searchParams.set("idx", core.text(benefit.setupProductId));
-      link.href = url.toString();
-      link.textContent = message;
-      paragraph.append(link);
-      content.append(paragraph);
-      section.append(title, content);
-      fragment.append(section);
-      if (benefit.setupLabel === "PACK_AUTO_V1")
-        setTimeout(
-          () => section.remove(),
-          Math.max(1, Date.parse(benefit.endsAt) - Date.now()),
-        );
-    });
-    const delivery = detail.querySelector(".prod-detail-section--delivery");
-    if (delivery) {
-      delivery.style.setProperty(
-        "border-bottom",
-        "1px solid rgba(30, 30, 30, 0.1)",
-        "important",
-      );
-      delivery.style.setProperty("padding-bottom", "12px", "important");
-    }
-    detail.append(fragment);
+  let refreshTimer,
+    expiryTimers = [],
+    renewAutomatic = false,
+    painting = false,
+    disposed = false;
+  core.start("구매혜택", () => renderBenefits());
+  window.addEventListener("pagehide", (event) => {
+    clearTimeout(refreshTimer);
+    if (!event.persisted) disposed = true;
   });
+  window.addEventListener("pageshow", (event) => {
+    if (event.persisted && renewAutomatic) renderBenefits(true).catch(() => {});
+  });
+  async function renderBenefits(fresh = false) {
+    if (painting || disposed) return;
+    painting = true;
+    clearTimeout(refreshTimer);
+    try {
+      const seen = new Set();
+      const benefits = (await core.rules(fresh))
+        .filter(
+          (item) =>
+            core.text(item.type) === "구매혜택" &&
+            item.setupAvailable !== false &&
+            !(
+              item.setupLabel === "PACK_AUTO_V1" &&
+              ["kissofsummer.co.kr", "mascolino.co.kr"].includes(core.domain)
+            ) &&
+            /^\d+$/.test(core.text(item.setupProductId)),
+        )
+        .filter((item) => {
+          const id = core.text(item.setupProductId);
+          if (seen.has(id)) return false;
+          seen.add(id);
+          return true;
+        });
+      renewAutomatic =
+        renewAutomatic || benefits.some((r) => r.setupLabel === "PACK_AUTO_V1");
+      if (!benefits.length && !renewAutomatic) return;
+      const detail = await core.waitFor("._item_detail_wrap");
+      if (!detail) return;
+      const currentTitle = document.querySelector("h1.view_tit");
+      const currentName = getProductTitle(currentTitle);
+      // 소유 표시가 있는 생성물만 교체한다. 상세 본문의 숨겨진 복제본은 필요하지 않다.
+      detail
+        .querySelectorAll('[data-sheet-benefit="true"]')
+        .forEach((element) => element.remove());
+      expiryTimers.forEach(clearTimeout);
+      expiryTimers = [];
+      const fragment = document.createDocumentFragment();
+      benefits.forEach((benefit) => {
+        const counterpart =
+          core.text(benefit.setupLabel) ||
+          getCounterpartName(
+            core.text(benefit.setupTitle),
+            currentName || core.text(benefit.productName),
+          );
+        let message =
+          core.text(benefit.message) ||
+          "할인 받고 {상품명} 셋업으로 구매하러 가기→";
+        message = message.replace(
+          /\{상품명\}/g,
+          () => counterpart || "세트상품",
+        );
+        const discount = core.text(benefit.discount);
+        if (benefit.setupLabel === "PACK_AUTO_V1") {
+          // The signed API already constructs quantity and current public discount wording.
+          if (
+            core.text(benefit.productId) !== core.productId ||
+            !Number.isFinite(Date.parse(benefit.endsAt)) ||
+            Date.parse(benefit.endsAt) <= Date.now()
+          )
+            return;
+        } else if (
+          /^\d+(?:\.\d+)?%$/.test(discount) &&
+          parseFloat(discount) > 0 &&
+          parseFloat(discount) <= 100
+        ) {
+          message = discount + " " + message;
+        } else {
+          message = message.replace(/^할인\s*받고\s*/i, "");
+        }
+        const section = document.createElement("div");
+        section.className = "benefit-wrap prod-detail-section benefit-injected";
+        section.dataset.sheetBenefit = "true";
+        section.style.display = "flex";
+        const title = document.createElement("div");
+        title.className = "prod-detail-section__title";
+        title.textContent = "구매 혜택";
+        const content = document.createElement("div");
+        content.className = "prod-detail-section__content";
+        const paragraph = document.createElement("p");
+        paragraph.className = "prod-detail-section__item";
+        const link = document.createElement("a");
+        const url = new URL("/shop_view", location.origin);
+        url.searchParams.set("idx", core.text(benefit.setupProductId));
+        link.href = url.toString();
+        link.textContent = message;
+        paragraph.append(link);
+        content.append(paragraph);
+        section.append(title, content);
+        fragment.append(section);
+        if (benefit.setupLabel === "PACK_AUTO_V1")
+          expiryTimers.push(
+            setTimeout(
+              () => section.remove(),
+              Math.max(1, Date.parse(benefit.endsAt) - Date.now()),
+            ),
+          );
+      });
+      const delivery = detail.querySelector(".prod-detail-section--delivery");
+      if (delivery) {
+        delivery.style.setProperty(
+          "border-bottom",
+          "1px solid rgba(30, 30, 30, 0.1)",
+          "important",
+        );
+        delivery.style.setProperty("padding-bottom", "12px", "important");
+      }
+      detail.append(fragment);
+    } finally {
+      painting = false;
+      if (renewAutomatic && !disposed)
+        refreshTimer = setTimeout(
+          () => renderBenefits(true).catch(() => {}),
+          60000,
+        );
+    }
+  }
 
   function getCounterpartName(setupTitle, currentName) {
     const normalize = (name) =>
