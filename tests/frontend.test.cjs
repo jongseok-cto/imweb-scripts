@@ -10,6 +10,7 @@ const rule = (type, message, overrides={}) => ({ enabled:true,domain:'example.co
 const pause = ms => new Promise(resolve=>setTimeout(resolve,ms));
 async function page(t, rules, options={}, order=['reserved-shipping.js']) {
   const dom=new JSDOM(options.html||markup(options),{url:options.url||'https://example.com/shop_view?idx=1',runScripts:'outside-only',pretendToBeVisual:true});t.after(()=>dom.window.close());
+  if(options.renewEvery){const timer=dom.window.setTimeout.bind(dom.window);dom.window.setTimeout=(fn,ms,...args)=>timer(fn,ms===60000?options.renewEvery:ms,...args);}
   dom.window.fetch=async(...args)=>{const response=await (options.fetch|| (async()=>({ok:true,json:async()=>rules})))(...args);return {headers:{get:()=>String(Date.now()+60000)},...response};};
   for(const file of order){dom.window.eval(sources[file]);await pause(240);}
   return {w:dom.window,d:dom.window.document};
@@ -189,4 +190,13 @@ test('서버가 조회 불가로 판정한 세트상품은 오래된 할인이�
 });
 test('뒤로 가기로 복원된 페이지에서도 옵션 영역 교체를 계속 감지한다',async t=>{
   const {d,w}=await page(t,[rule('옵션문구','복원 안내')]);w.dispatchEvent(new w.PageTransitionEvent('pagehide',{persisted:true}));w.dispatchEvent(new w.PageTransitionEvent('pageshow',{persisted:true}));const holder=d.createElement('div');holder.innerHTML=markup();d.querySelector('#prod_options').replaceWith(holder.querySelector('#prod_options'));await pause(60);assert.equal(d.querySelector('.reserved-shipping-date')?.textContent,'복원 안내');
+});
+
+
+test('open PACK pages renew verified rules before the original expiry and remove a withdrawn rule',async t=>{
+  const initial=rule('구매혜택','2PACK 구매 시 15% 할인→',{setupProductId:'2',setupTitle:'[2PACK] 탑',setupLabel:'PACK_AUTO_V1',setupAvailable:true,endsAt:new Date(Date.now()+600).toISOString()});
+  let calls=0,withdrawn=false;
+  const {d}=await page(t,[],{renewEvery:100,html:'<h1 class="view_tit">탑</h1><div class="_item_detail_wrap"></div>',fetch:async()=>({ok:true,json:async()=>{calls++;return withdrawn?[]:[{...initial,endsAt:calls===1?initial.endsAt:new Date(Date.now()+20000).toISOString()}];}})},['purchase-benefit-dustuff.js']);
+  await pause(550);assert.ok(calls>2);assert.equal(d.querySelectorAll('[data-sheet-benefit]').length,1);
+  withdrawn=true;await pause(180);assert.equal(d.querySelector('[data-sheet-benefit]'),null);
 });
