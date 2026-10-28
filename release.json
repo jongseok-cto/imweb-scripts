@@ -1,9 +1,9 @@
 {
-  "sourceCommit": "a9e4695f1dcd3b22100c4d92dbc3237df17662b9",
+  "sourceCommit": "3850e3cfbddefc4bb52a339065546670e3de8d75",
   "files": {
-    "delivery-info.js": "510b7df39180ecaeec777c6d2d43c9a35c64e4ada511f8ad1fe67957a4681d58",
-    "reserved-shipping.js": "064545c0cd67c72e219b5f6c237174b851444c472b6bdc031ba2623bca77cbc7",
-    "purchase-benefit-dustuff.js": "9bcfc884c41bce51ba5332ec9ae93b819d143a0cb69e804c09399465a137aec9",
+    "delivery-info.js": "9bdf595a929c814c70992e2764a7f84c2b709169f8e6e0cf0f6ca56cad2822d7",
+    "reserved-shipping.js": "6d026a204ac5125a379ecc469799e7aa78e29c542cdedc00b22fcda29b088ecd",
+    "purchase-benefit-dustuff.js": "1e320b94bb5ad826478417a1427a0eea7d24e4f88977e5e3b6a0164865c0e882",
     "reserved-shipping.css": "0e2c1cee2b825611f4382a1c9151f1dbf2717a11b65c7a9c927909f2addca0fe",
     "purchase-benefit-dustuff.css": "a9c7d30797e4634314793b108858f7dae3553373399470b3531c80ca68b47ea6",
     "demo/index.html": "7f6763e9e0f98c201a891745ac6a7dc4c529371a89f4d3c578eb8930332a3477"

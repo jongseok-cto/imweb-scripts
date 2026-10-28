@@ -166,7 +166,7 @@ for(const reason of ['http','shape','expired'])test('캐시 '+reason+' 오류는
     if(urls.length===1)return reason==='http'?{ok:false,status:503}:{ok:true,headers:{get:()=>String(reason==='expired'?Date.now()-1:Date.now()+60000)},json:async()=>reason==='shape'?{error:true}:rules};
     return {ok:true,json:async()=>rules};
   }});
-  assert.equal(urls.length,2);assert.equal(new URL(urls[0]).hostname,'imweb-notices-cache-4w4l3rcbpq-du.a.run.app');assert.equal(new URL(urls[1]).hostname,'script.google.com');assert.equal(d.querySelector('.reserved-shipping-date')?.textContent,'원본 복구');
+  assert.equal(urls.length,2);assert.equal(new URL(urls[0]).hostname,'notice-cache.alwaysenter.com');assert.equal(new URL(urls[1]).hostname,'script.google.com');assert.equal(d.querySelector('.reserved-shipping-date')?.textContent,'원본 복구');
 });
 
 test('캐시 응답이 멈추면 제한 시간 뒤 구글 조회로 전환하고 모든 기능이 공유한다',async t=>{

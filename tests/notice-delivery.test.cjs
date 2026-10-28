@@ -52,7 +52,7 @@ test("browser records cache, Google recovery and both recovery failures once wit
     assert.equal(reports.length, 1);
     assert.equal(
       reports[0].url,
-      "https://imweb-notices-cache-4w4l3rcbpq-du.a.run.app/v1/delivery",
+      "https://notice-cache.alwaysenter.com/v1/delivery",
     );
     assert.deepEqual(Object.keys(reports[0].data).sort(), [
       "latencyMs",
