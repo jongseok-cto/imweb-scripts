@@ -6,7 +6,7 @@
   const API_URL =
     "https://script.google.com/macros/s/AKfycbzHZKXnGomjSslR3C355roaWa7VYpcOdtzuAS7j9ZpT2QyGZAdf5OoYSqo5_DZRqBg/exec";
   const CACHE_URL =
-    "https://imweb-notices-cache-4w4l3rcbpq-du.a.run.app/v1/rules";
+    "https://notice-cache.alwaysenter.com/v1/rules";
   const aliases = {
     "neverseenbefore.imweb.me": "nvsbf.com",
     "dustystuff.imweb.me": "dustuff.co.kr",
