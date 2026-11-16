@@ -457,6 +457,8 @@
 
     const sizeInfo = detectSizes(root);
 
+    if (syncOptionCombinations(root, colorInfo, sizeInfo)) return;
+
     /*
       컬러를 아직 선택하지 않은 상태
     */
@@ -513,6 +515,64 @@
     const matched = findSheetMatch(colorInfo.value, "");
 
     syncColorOnlyMessage(root, colorInfo, key, matched);
+  }
+
+  function syncOptionCombinations(root, colorInfo, sizeInfo) {
+    const rules = productSettings.filter((rule) =>
+      Array.isArray(rule.optionSelection),
+    );
+    if (!rules.length) return false;
+    const groups = new Map();
+    for (const group of root.querySelectorAll("._form_select_wrap")) {
+      const code = [...group.classList]
+        .map((name) => /^_form_select_wrap_(O[a-zA-Z0-9]{5,39})$/.exec(name))
+        .find(Boolean)?.[1];
+      if (!code) continue;
+      if (groups.has(code)) return false;
+      groups.set(code, group);
+    }
+    if (
+      groups.size !== 3 ||
+      !rules.some(
+        ({ optionSelection }) =>
+          optionSelection.length === groups.size &&
+          optionSelection.every(
+            (part) => Array.isArray(part) && groups.has(part[0]),
+          ),
+      )
+    )
+      return false;
+
+    const entries = [...groups];
+    const [lastCode, lastGroup] = entries.pop();
+    const selected = new Map(
+      entries.map(([code, group]) => {
+        const items = group.querySelectorAll(".dropdown-item.selected");
+        return [code, items.length === 1 ? normalizeOption(extractSizeText(items[0])) : ""];
+      }),
+    );
+    if ([...selected.values()].some((value) => !value)) return false;
+    const legacySizes = new Map(
+      sizeInfo.items.map(({ element, value }) => [element, value]),
+    );
+    const activeKeys = new Set();
+    for (const item of lastGroup.querySelectorAll(".dropdown-item")) {
+      const label = normalizeOption(extractSizeText(item));
+      if (!label) continue;
+      selected.set(lastCode, label);
+      const key = JSON.stringify([...selected]);
+      activeKeys.add(key);
+      const legacySize =
+        !colorInfo.type || colorInfo.value ? legacySizes.get(item) : undefined;
+      syncSizeMessage(
+        item,
+        key,
+        findSheetMatch(colorInfo.value, legacySize, selected),
+      );
+    }
+    cleanupStaleSizeNotices(root, activeKeys);
+    root.querySelectorAll(".reserved-color-only").forEach((el) => el.remove());
+    return true;
   }
 
   /* ========================================
@@ -760,7 +820,9 @@
      9. 구글시트 옵션 매칭
   ======================================== */
 
-  function findSheetMatch(color, size) {
+  function findSheetMatch(color, size, selected = null) {
+    const nc = normalizeOption(color);
+    const nz = normalizeOption(size);
     return ["예약배송", "옵션문구"]
       .map((type) => {
         let best = null,
@@ -771,23 +833,39 @@
           if (cleanText(item.type) !== type || !cleanText(item.message)) return;
           const c = normalizeOption(item.color),
             z = normalizeOption(item.size);
-          const nc = normalizeOption(color),
-            nz = normalizeOption(size);
           const wildcard = (value) => value === "all" || value === "*";
           const colorMatch = c === nc || (type === "옵션문구" && wildcard(c));
           const sizeMatch =
             z === nz ||
             (nz === "" && z === "all") ||
             (type === "옵션문구" && wildcard(z));
-          const specificity = (c === nc ? 2 : 0) + (z === nz ? 1 : 0);
+          const selection = item.optionSelection;
+          const exact = selection != null;
+          if (exact) {
+            if (
+              !selected ||
+              !Array.isArray(selection) ||
+              selection.length !== selected.size ||
+              !selection.every(
+                (part) =>
+                  Array.isArray(part) &&
+                  part.length === 2 &&
+                  typeof part[1] === "string" &&
+                  selected.get(part[0]) === normalizeOption(part[1]),
+              ) ||
+              new Set(selection.map(([code]) => code)).size !== selected.size
+            )
+              return;
+          } else if (size === undefined || !colorMatch || !sizeMatch) {
+            return;
+          }
+          const specificity = exact
+            ? 4
+            : (c === nc ? 2 : 0) + (z === nz ? 1 : 0);
           const rank = Number.isFinite(Number(item.priority))
             ? Number(item.priority)
             : 0;
-          if (
-            colorMatch &&
-            sizeMatch &&
-            (rank > priority || (rank === priority && specificity > score))
-          ) {
+          if (rank > priority || (rank === priority && specificity > score)) {
             best = item;
             score = specificity;
             priority = rank;
@@ -995,7 +1073,9 @@
         size = cleanText(item.size),
         message = String(item.message ?? "").trim();
       // Rules arrive in stable priority order; retain one message per exact target.
-      const key = normalizeOption(color) + "|" + normalizeOption(size);
+      const key = item.optionSelection
+        ? JSON.stringify(item.optionSelection)
+        : normalizeOption(color) + "|" + normalizeOption(size);
       if (used.has(key)) return;
       used.add(key);
       const date = convertShippingDate(message);

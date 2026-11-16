@@ -17,6 +17,39 @@ async function page(t, rules, options={}, order=['reserved-shipping.js']) {
 }
 const summary = d=>d.querySelector('[data-sheet-notice="reserved-summary"] .prod-detail-section__content')?.textContent;
 
+test('세 필수 옵션은 같은 컬러와 사이즈에서도 구성별로 문구를 표시한다', async t => {
+  const group = (code, values) => `<div class="_form_select_wrap _form_select_wrap_${code}">${values.map(item).join('')}</div>`;
+  const html = `<div id="prod_options">
+    ${group('Ocolor1', ['White', 'Black'])}
+    ${group('Opiece1', ['Jacket', 'Skirt'])}
+    ${group('Osize01', ['S', 'L'])}
+  </div>`;
+  const selection = [['Ocolor1', 'White'], ['Opiece1', 'Jacket'], ['Osize01', 'L']];
+  const {d} = await page(t, [
+    rule('예약배송', 'Jacket L 출고 안내', {color:'White', size:'Jacket / L', optionSelection:selection}),
+    rule('옵션문구', 'Jacket L 추가 안내', {color:'White', size:'Jacket / L', optionSelection:selection}),
+    rule('예약배송', 'Skirt L 출고 안내', {color:'White', size:'Skirt / L', optionSelection:[selection[0], ['Opiece1', 'Skirt'], selection[2]]}),
+    rule('옵션문구', '다른 상품 구성', {optionSelection:[selection[0], ['Opiece2', 'Jacket'], selection[2]]}),
+  ], {html});
+  const messages = (size) => [...d.querySelectorAll(`[data-size="${size}"] .reserved-shipping-date`)]
+    .map(el => el.textContent);
+  const choose = (value, enabled = true) => d.querySelector(`[data-size="${value}"]`)
+    .classList.toggle('selected', enabled);
+  assert.deepEqual(messages('L'), []);
+  choose('White');
+  choose('Jacket');
+  await pause(130);
+  assert.deepEqual(messages('S'), []);
+  assert.deepEqual(messages('L'), ['Jacket L 출고 안내', 'Jacket L 추가 안내']);
+  choose('Jacket', false);
+  choose('Skirt');
+  await pause(130);
+  assert.deepEqual(messages('L'), ['Skirt L 출고 안내']);
+  choose('Skirt', false);
+  await pause(130);
+  assert.deepEqual(messages('L'), []);
+});
+
 test('예약판매로 이름이 바뀌어도 아미카지 출고 안내와 PACK을 상품번호로 한 번만 표시한다',async t=>{
   let calls=0;
   const rows=[rule('예약배송','10/16 이후 순차 출고',{domain:'armykaji.com',productName:'[당일출고] 투피스 와플 티'}),
