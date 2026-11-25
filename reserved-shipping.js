@@ -244,6 +244,46 @@
   };
 })();
 
+if (window.__IMWEB_PRODUCT_NOTICES_V1__.domain === "kissofsummer.co.kr") {
+(function () {
+  const core = window.__IMWEB_PRODUCT_NOTICES_V1__;
+  core.start("배송정보", async function () {
+    const setting = (await core.rules()).find(
+      (item) => core.text(item.type) === "배송정보" && core.text(item.message),
+    );
+    if (!setting) return;
+    const delivery = await core.waitFor(".prod-detail-section--delivery");
+    if (!delivery || document.querySelector('[data-sheet-notice="delivery"]'))
+      return;
+    const guide =
+      core.domain === "kissofsummer.co.kr"
+        ? delivery.closest("#prod_goods_form")?.querySelector(
+            ".prod-detail-section--delivery-guide .prod-detail-section__content",
+          )
+        : null;
+    const content = document.createElement(guide ? "p" : "div");
+    content.style.whiteSpace = "pre-wrap";
+    content.style.overflowWrap = "anywhere";
+    content.textContent = String(setting.message ?? "");
+    if (guide) {
+      content.className = "prod-detail-section__item";
+      content.dataset.sheetNotice = "delivery";
+      guide.append(content);
+      return;
+    }
+    const section = document.createElement("div");
+    section.className =
+      "prod-detail-section prod-detail-section--reserve-notice";
+    section.dataset.sheetNotice = "delivery";
+    const title = document.createElement("div");
+    title.className = "prod-detail-section__title";
+    title.textContent = "배송 정보";
+    content.className = "prod-detail-section__content";
+    section.append(title, content);
+    delivery.insertAdjacentElement("afterend", section);
+  });
+})();
+}
 (function () {
   const core = window.__IMWEB_PRODUCT_NOTICES_V1__;
 
