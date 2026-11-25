@@ -17,6 +17,27 @@ async function page(t, rules, options={}, order=['reserved-shipping.js']) {
 }
 const summary = d=>d.querySelector('[data-sheet-notice="reserved-summary"] .prod-detail-section__content')?.textContent;
 
+test('키스오브썸머 상품 전체 문구가 기존 배송 안내 안에 한 번 표시된다', async t => {
+  const domain = 'kissofsummer.co.kr';
+  const html = '<form id="prod_goods_form"><div class="prod-detail-section--delivery">배송</div>' +
+    '<div class="prod-detail-section--delivery-guide"><div class="prod-detail-section__content">' +
+    '<p>기본 배송 안내</p></div></div><div id="prod_options"></div></form>';
+  const rows = [
+    rule('배송정보', '<b>상품별 안내</b>\n두 번째 줄', {domain}),
+    rule('배송정보', '다른 상품 배송 안내', {domain, productId:'2', priority:10}),
+  ];
+  const {d} = await page(t, rows, {html,url:'https://www.kissofsummer.co.kr/1692/?idx=1'},
+    ['reserved-shipping.js', 'delivery-info.js']);
+  const guide = d.querySelector('.prod-detail-section--delivery-guide');
+  const notices = [...d.querySelectorAll('[data-sheet-notice="delivery"]')];
+  assert.equal(notices.length, 1);
+  assert.equal(guide.firstElementChild.firstElementChild.textContent, '기본 배송 안내');
+  assert.equal(guide.contains(notices[0]), true);
+  assert.equal(guide.nextElementSibling.id, 'prod_options');
+  assert.equal(notices[0].textContent, '<b>상품별 안내</b>\n두 번째 줄');
+  assert.equal(notices[0].children.length, 0);
+});
+
 test('세 필수 옵션은 같은 컬러와 사이즈에서도 구성별로 문구를 표시한다', async t => {
   const group = (code, values) => `<div class="_form_select_wrap _form_select_wrap_${code}">${values.map(item).join('')}</div>`;
   const html = `<div id="prod_options">

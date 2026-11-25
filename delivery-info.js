@@ -254,6 +254,22 @@
     const delivery = await core.waitFor(".prod-detail-section--delivery");
     if (!delivery || document.querySelector('[data-sheet-notice="delivery"]'))
       return;
+    const guide =
+      core.domain === "kissofsummer.co.kr"
+        ? delivery.closest("#prod_goods_form")?.querySelector(
+            ".prod-detail-section--delivery-guide .prod-detail-section__content",
+          )
+        : null;
+    const content = document.createElement(guide ? "p" : "div");
+    content.style.whiteSpace = "pre-wrap";
+    content.style.overflowWrap = "anywhere";
+    content.textContent = String(setting.message ?? "");
+    if (guide) {
+      content.className = "prod-detail-section__item";
+      content.dataset.sheetNotice = "delivery";
+      guide.append(content);
+      return;
+    }
     const section = document.createElement("div");
     section.className =
       "prod-detail-section prod-detail-section--reserve-notice";
@@ -261,11 +277,7 @@
     const title = document.createElement("div");
     title.className = "prod-detail-section__title";
     title.textContent = "배송 정보";
-    const content = document.createElement("div");
     content.className = "prod-detail-section__content";
-    content.style.whiteSpace = "pre-wrap";
-    content.style.overflowWrap = "anywhere";
-    content.textContent = String(setting.message ?? "");
     section.append(title, content);
     delivery.insertAdjacentElement("afterend", section);
   });
