@@ -255,32 +255,26 @@ if (window.__IMWEB_PRODUCT_NOTICES_V1__.domain === "kissofsummer.co.kr") {
     const delivery = await core.waitFor(".prod-detail-section--delivery");
     if (!delivery || document.querySelector('[data-sheet-notice="delivery"]'))
       return;
+    const isDispatchNotice = core.domain === "kissofsummer.co.kr";
     const guide =
-      core.domain === "kissofsummer.co.kr"
-        ? delivery.closest("#prod_goods_form")?.querySelector(
-            ".prod-detail-section--delivery-guide .prod-detail-section__content",
-          )
-        : null;
-    const content = document.createElement(guide ? "p" : "div");
+      isDispatchNotice &&
+      delivery.parentElement.querySelector(
+        ":scope > .prod-detail-section--delivery-guide",
+      );
+    const content = document.createElement("div");
     content.style.whiteSpace = "pre-wrap";
     content.style.overflowWrap = "anywhere";
     content.textContent = String(setting.message ?? "");
-    if (guide) {
-      content.className = "prod-detail-section__item";
-      content.dataset.sheetNotice = "delivery";
-      guide.append(content);
-      return;
-    }
     const section = document.createElement("div");
     section.className =
       "prod-detail-section prod-detail-section--reserve-notice";
     section.dataset.sheetNotice = "delivery";
     const title = document.createElement("div");
     title.className = "prod-detail-section__title";
-    title.textContent = "배송 정보";
+    title.textContent = isDispatchNotice ? "출고 안내" : "배송 정보";
     content.className = "prod-detail-section__content";
     section.append(title, content);
-    delivery.insertAdjacentElement("afterend", section);
+    (guide || delivery).insertAdjacentElement("afterend", section);
   });
 })();
 }
